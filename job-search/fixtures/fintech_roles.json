@@ -1,0 +1,21 @@
+[
+ {"title": "Head of Trading Education", "expect": "edu"},
+ {"title": "Customer Education Manager", "expect": "edu"},
+ {"title": "Academy Lead (Crypto)", "expect": "edu"},
+ {"title": "Lead Instructional Designer", "expect": "edu"},
+ {"title": "Education Content Manager, Markets", "expect": "edu"},
+ {"title": "Product Manager, Copy Trading", "expect": "product"},
+ {"title": "Head of Growth, Retail Brokerage", "expect": "growth"},
+ {"title": "Country Manager Poland", "expect": "business"},
+ {"title": "Crypto Trader", "expect": null},
+ {"title": "Compliance Officer", "expect": null},
+ {"title": "Senior Backend Engineer, Matching Engine", "expect": null},
+ {"title": "Education Specialist (Junior)", "expect": null},
+ {"title": "Customer Support Agent", "expect": null},
+ {"title": "Compliance Operations Director", "expect": null},
+ {"title": "Risk Operations Lead", "expect": null},
+ {"title": "Head of Business Risk & Controls", "expect": null},
+ {"title": "Frontend Business Lead", "expect": null},
+ {"title": "Senior Product Manager - Trading Growth (Web3)", "expect": "growth"},
+ {"title": "Product Manager, Compliance Automation", "expect": null}
+]

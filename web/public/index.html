@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CV Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hdr">
+    <div class="hdr-in">
+      <a href="#/" class="logo">
+        <span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+        CV Checker
+      </a>
+      <nav aria-label="Разделы" class="nav">
+        <a href="#/" data-nav="home">Заявки</a>
+        <a href="#/master" data-nav="master">Master CV</a>
+        <a href="#/cases" data-nav="cases">База кейсов</a>
+        <a href="#/feed" data-nav="feed">Поиск вакансий</a>
+        <a href="#/profile" data-nav="profile">Профиль</a>
+      </nav>
+      <div class="grow"></div>
+      <div class="bell-wrap">
+        <button type="button" class="bell" id="bellBtn" aria-label="Уведомления" aria-expanded="false" aria-controls="bellPanel">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          <span class="bell-badge hidden" id="bellBadge"></span>
+        </button>
+        <div class="bell-panel hidden" id="bellPanel" role="dialog" aria-label="Уведомления"></div>
+      </div>
+      <a href="#/agent" class="agent-status unknown" id="agentStatus"><span class="dot"></span><span class="txt">Проверяю агента…</span></a>
+      <button id="addBtn" class="btn primary" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Вакансия</button>
+    </div>
+  </header>
+
+  <main id="homeView" class="page"></main>
+
+  <main id="vacView" class="page hidden">
+    <div class="page-wrap">
+      <a href="#/" class="back">← Все заявки</a>
+      <section id="detail" class="detail"></section>
+    </div>
+  </main>
+
+  <main class="master-view hidden" id="masterView"></main>
+
+  <main id="agentView" class="page hidden"></main>
+
+  <main id="profileView" class="page hidden"></main>
+
+  <main id="feedView" class="page hidden"></main>
+
+  <main id="casesView" class="page hidden"></main>
+
+  <dialog id="addDialog">
+    <form method="dialog" id="addForm">
+      <h2>Новая вакансия</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="text">Текст</button>
+        <button type="button" class="tab" data-tab="url">Ссылка</button>
+        <button type="button" class="tab" data-tab="manual">Уже отправил</button>
+      </div>
+      <div class="tabpane" data-pane="text">
+        <textarea id="addText" rows="14" placeholder="Вставь полный текст вакансии (название, компания, локация, описание)"></textarea>
+        <input id="addTextUrl" type="url" placeholder="Ссылка на вакансию (необязательно)">
+      </div>
+      <div class="tabpane hidden" data-pane="url">
+        <input id="addUrl" type="url" placeholder="https://…">
+        <p class="hint">LinkedIn и другие сайты с логином не откроются — тогда приложение попросит вставить текст.</p>
+      </div>
+      <div class="tabpane hidden" data-pane="manual">
+        <p class="hint" style="margin:8px 0 4px">Отклик, сделанный вне приложения (Easy Apply, реферал, с телефона) — без агента,
+          чтобы он попал на доску, в фоллоу-апы и статистику.</p>
+        <div class="form-grid" style="margin-top:8px">
+          <label for="manCompany">Компания</label><input id="manCompany" required>
+          <label for="manRole">Роль</label><input id="manRole" required>
+          <label for="manDate">Дата отправки</label><input id="manDate" type="date">
+          <label for="manChannel">Канал</label>
+          <select id="manChannel">
+            <option value="linkedin">LinkedIn</option><option value="site">Сайт компании</option><option value="board">Сайт вакансий</option><option value="email">Email</option>
+            <option value="referral">Реферал</option><option value="recruiter">Рекрутер написал сам</option><option value="other">Другое</option>
+          </select>
+          <label for="manUrl">Ссылка</label><input id="manUrl" type="url" placeholder="На вакансию (необязательно)">
+          <label for="manNote">Заметка</label><input id="manNote" placeholder="Например: подавался с базовым CV">
+        </div>
+      </div>
+      <div class="form-grid found-row">
+        <label for="addFoundOn">Где нашёл</label>
+        <select id="addFoundOn"><option value="">— не указано</option></select>
+      </div>
+      <p id="addError" class="error"></p>
+      <div class="actions">
+        <button type="button" id="addCancel">Отмена</button>
+        <button type="submit" class="primary" id="addSubmit">Оценить фит</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="docDialog" class="doc">
+    <div class="doc-head">
+      <strong id="docTitle"></strong>
+      <button type="button" id="docClose" aria-label="Закрыть">✕</button>
+    </div>
+    <article id="docBody" class="md"></article>
+  </dialog>
+
+  <dialog id="sentDialog" aria-labelledby="sentTitle">
+    <form method="dialog" id="sentForm">
+      <h2 id="sentTitle">Отметить отправленным</h2>
+      <p class="muted" id="sentRole" style="margin:-6px 0 14px"></p>
+      <div class="form-grid">
+        <label for="sentDate">Дата отправки</label>
+        <input type="date" id="sentDate" required>
+        <span class="lbl">Канал</span>
+        <div class="radios" role="radiogroup" aria-label="Канал">
+          <label><input type="radio" name="channel" value="site"> Сайт компании</label>
+          <label><input type="radio" name="channel" value="board"> Сайт вакансий</label>
+          <label><input type="radio" name="channel" value="email"> Email</label>
+          <label><input type="radio" name="channel" value="linkedin"> LinkedIn</label>
+          <label><input type="radio" name="channel" value="referral"> Реферал</label>
+          <label><input type="radio" name="channel" value="recruiter"> Рекрутер написал сам</label>
+          <label><input type="radio" name="channel" value="other"> Другое</label>
+        </div>
+        <label for="sentTarget">Куда</label>
+        <input type="text" id="sentTarget" placeholder="Ссылка на форму, email или имя рекрутера">
+        <label for="sentNote">Заметка</label>
+        <input type="text" id="sentNote" placeholder="Например: написал hiring manager в LinkedIn">
+      </div>
+      <fieldset class="checklist">
+        <legend>Перед отметкой</legend>
+        <p class="muted hidden" id="sentNoPackage" style="margin:0 0 6px">Пакета в приложении нет — запишем как «без пакета».</p>
+        <label id="chkCvRow"><input type="checkbox" id="chkCv"> CV проверено глазами</label>
+        <label id="chkLetterRow"><input type="checkbox" id="chkLetter"> Письмо проверено</label>
+        <label><input type="checkbox" id="chkSkip"> Отправил без проверки</label>
+      </fieldset>
+      <p class="hint" id="sentAnswersHint" style="margin:10px 0 0">Были вопросы в форме — компенсация, опыт, срок выхода? Запиши ответы в блоке
+        <a href="#" id="sentAnswersLink">«Мои ответы при подаче»</a> на странице заявки.</p>
+      <p id="sentError" class="error"></p>
+      <div class="actions">
+        <button type="button" id="sentCancel">Отмена</button>
+        <button type="submit" class="primary" id="sentSubmit" disabled>Отметить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="rejectDialog" aria-labelledby="rejectTitle">
+    <form method="dialog" id="rejectForm">
+      <h2 id="rejectTitle">Отказ</h2>
+      <p class="muted" id="rejectRole" style="margin:-6px 0 14px"></p>
+      <div class="form-grid">
+        <label for="rejStage">До какого этапа дошёл</label>
+        <select id="rejStage"></select>
+        <label for="rejFacts">Что знаю точно</label>
+        <textarea id="rejFacts" rows="2" placeholder="Текст письма, слова рекрутера, когда именно закончилось"></textarea>
+        <label for="rejVersion">Моя версия причины</label>
+        <textarea id="rejVersion" rows="2" placeholder="Догадка — отдельно от фактов"></textarea>
+        <label for="rejFeedback">Фидбек компании</label>
+        <textarea id="rejFeedback" rows="2" placeholder="Если прислали"></textarea>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Одна отказ — точка, три на одном этапе — линия. Записывай факты отдельно от версий: так видно, что менять.</p>
+      <p id="rejError" class="error"></p>
+      <div class="actions">
+        <button type="button" id="rejCancel">Не сейчас</button>
+        <button type="submit" class="primary">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="masterFile" accept=".pdf,.docx" class="hidden">
+  <script src="app.js"></script>
+  <script src="cases-view.js"></script>
+  <script src="master-view.js"></script>
+</body>
+</html>

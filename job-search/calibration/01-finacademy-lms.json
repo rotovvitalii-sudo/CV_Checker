@@ -1,0 +1,16 @@
+{
+  "title": "Product Owner (custom LMS)", "company": "FinAcademy Pro",
+  "url": "", "source": "calibration (историческая, фактический найм кандидата 2021)",
+  "date_posted": "2021-08", "location": "Remote, Europe", "work_format": "hybrid",
+  "relocation_support": "unknown", "seniority": "senior", "role_family": "senior_pm",
+  "domain": "EdTech / финансовое образование", "business_model": "B2C", "platform": "web",
+  "company_stage": "работающая академия, старый контент на Moodle",
+  "current_task": "Заменить Moodle собственной кастомной LMS и переснять флагманские курсы в современном формате",
+  "must_have_experience": ["продуктовая работа над LMS", "PRD и беклог", "запуск платформы с нуля"],
+  "nice_to_have": ["производство образовательного контента"],
+  "ai_requirement": "none", "languages_required": ["Ukrainian", "Russian"], "salary": "",
+  "scores": {"task_fit": 4, "domain": 2, "role_type": 2, "logistics": 2},
+  "why": "Компания строила ровно то, что я уже делал — кастомную LMS. Плюс нужен был человек, умеющий продюсировать образовательный контент, а это 10 лет моушн-студии.",
+  "anchor_case": "LMS-проект + производство образовательного видео",
+  "gaps": [], "expected_min": 9, "expected_max": 10
+}

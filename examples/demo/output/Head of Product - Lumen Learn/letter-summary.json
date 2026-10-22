@@ -1,0 +1,11 @@
+{"mode": "generated",
+ "questions": [
+  "Фраза «I have not taken an academy to 10 partner banks, and I can't show retention figures» опирается на пробелы из match-report: подтверди, что она верна.",
+  "В вакансии банки, у тебя партнёр-брокер: в письме он назван brokerом, слово bank применено только к их задаче.",
+  "Подпись «Alex Morgan» взята из шапки CV."
+ ],
+ "removed": ["размер команды (в CV 5, в карточке академии 3 — расхождение)", "Studio One и A/B-тесты — не вошли ради длины"],
+ "facts_from": ["knowledge-base/cards/northwind-fintech-academy.md", "knowledge-base/cards/northwind-subscription-model.md", "output/Head of Product - Lumen Learn/CV.md"],
+ "cards_used": ["northwind-fintech-academy", "northwind-subscription-model"],
+ "card_suggestions": [],
+ "note": "Письмо 201 слово: академия с активацией +31%, подписка, AI в контенте; пробелы (10 банков, удержание) названы честно."}

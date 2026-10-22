@@ -1,0 +1,5 @@
+{
+  "must": ["product manager", "native mobile|iOS|Android", "mobile app", "payments", "card issuing|issuing", "card schemes", "PSD2", "3DS", "payment flows", "roadmap", "conversion", "top-ups", "engineering", "mobile wallet|wallet", "fintech"],
+  "nice": ["German", "Berlin", "freelancers", "in-app payments", "cross-functional", "stakeholders", "metrics", "B2C", "growth", "compliance"],
+  "task": ["payments", "card issuing|issuing", "native mobile|mobile app", "conversion"]
+}

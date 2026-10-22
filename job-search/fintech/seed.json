@@ -1,0 +1,830 @@
+[
+ {
+  "name": "eToro",
+  "country": "IL/CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "etoro"
+  ]
+ },
+ {
+  "name": "Plus500",
+  "country": "IL/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "plus500"
+  ]
+ },
+ {
+  "name": "XTB",
+  "country": "PL",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "xtb",
+   "xtbsa"
+  ]
+ },
+ {
+  "name": "Trading 212",
+  "country": "UK/BG",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "trading212"
+  ]
+ },
+ {
+  "name": "IG Group",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "iggroup",
+   "ig"
+  ]
+ },
+ {
+  "name": "CMC Markets",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "cmcmarkets"
+  ]
+ },
+ {
+  "name": "Saxo Bank",
+  "country": "DK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "saxo",
+   "saxobank"
+  ]
+ },
+ {
+  "name": "Pepperstone",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "pepperstone"
+  ]
+ },
+ {
+  "name": "IC Markets",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "icmarkets"
+  ]
+ },
+ {
+  "name": "Exness",
+  "country": "CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "exness"
+  ]
+ },
+ {
+  "name": "XM (Trading Point)",
+  "country": "CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "xm",
+   "tradingpoint"
+  ]
+ },
+ {
+  "name": "Admirals",
+  "country": "EE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "admirals",
+   "admiralmarkets"
+  ]
+ },
+ {
+  "name": "Capital.com",
+  "country": "CY/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "capitalcom",
+   "capital-com"
+  ]
+ },
+ {
+  "name": "Libertex Group",
+  "country": "CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "libertex",
+   "libertexgroup",
+   "libertex-group"
+  ]
+ },
+ {
+  "name": "FxPro",
+  "country": "CY/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "fxpro"
+  ]
+ },
+ {
+  "name": "Swissquote",
+  "country": "CH",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "swissquote"
+  ]
+ },
+ {
+  "name": "Interactive Brokers",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "interactivebrokers"
+  ]
+ },
+ {
+  "name": "Robinhood",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "robinhood"
+  ]
+ },
+ {
+  "name": "Webull",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "webull"
+  ]
+ },
+ {
+  "name": "Freetrade",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "freetrade"
+  ]
+ },
+ {
+  "name": "Lightyear",
+  "country": "EE/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "lightyear",
+   "golightyear"
+  ]
+ },
+ {
+  "name": "Scalable Capital",
+  "country": "DE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "scalablecapital",
+   "scalable"
+  ]
+ },
+ {
+  "name": "Trade Republic",
+  "country": "DE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "traderepublic",
+   "trade-republic"
+  ]
+ },
+ {
+  "name": "BUX",
+  "country": "NL",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "bux",
+   "getbux"
+  ]
+ },
+ {
+  "name": "Public.com",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "public",
+   "publiccom",
+   "publichq"
+  ]
+ },
+ {
+  "name": "tastytrade",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "tastytrade"
+  ]
+ },
+ {
+  "name": "TradingView",
+  "country": "US/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "tradingview"
+  ]
+ },
+ {
+  "name": "flatexDEGIRO",
+  "country": "DE/NL",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "flatexdegiro",
+   "degiro"
+  ]
+ },
+ {
+  "name": "Stake",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "stake",
+   "hellostake"
+  ]
+ },
+ {
+  "name": "AvaTrade",
+  "country": "IE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "avatrade"
+  ]
+ },
+ {
+  "name": "OANDA",
+  "country": "US/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "oanda"
+  ]
+ },
+ {
+  "name": "FXCM",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "fxcm"
+  ]
+ },
+ {
+  "name": "StoneX",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "stonex"
+  ]
+ },
+ {
+  "name": "Axi",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "axi",
+   "axitrader"
+  ]
+ },
+ {
+  "name": "ThinkMarkets",
+  "country": "AU/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "thinkmarkets"
+  ]
+ },
+ {
+  "name": "FP Markets",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "fpmarkets"
+  ]
+ },
+ {
+  "name": "Tickmill",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "tickmill"
+  ]
+ },
+ {
+  "name": "Vantage Markets",
+  "country": "AU",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "vantage",
+   "vantagemarkets"
+  ]
+ },
+ {
+  "name": "Deriv",
+  "country": "MT/MY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "deriv"
+  ]
+ },
+ {
+  "name": "Octa",
+  "country": "CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "octa",
+   "octafx"
+  ]
+ },
+ {
+  "name": "HFM",
+  "country": "CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "hfm",
+   "hotforex"
+  ]
+ },
+ {
+  "name": "Darwinex",
+  "country": "ES/UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "darwinex"
+  ]
+ },
+ {
+  "name": "Skilling",
+  "country": "CY/SE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "skilling"
+  ]
+ },
+ {
+  "name": "NAGA",
+  "country": "DE/CY",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "naga",
+   "nagagroup"
+  ]
+ },
+ {
+  "name": "Spreadex",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "spreadex"
+  ]
+ },
+ {
+  "name": "Alpaca",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "alpaca",
+   "alpacamarkets"
+  ]
+ },
+ {
+  "name": "DriveWealth",
+  "country": "US",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "drivewealth"
+  ]
+ },
+ {
+  "name": "Upvest",
+  "country": "DE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "upvest"
+  ]
+ },
+ {
+  "name": "lemon.markets",
+  "country": "DE",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "lemonmarkets",
+   "lemon-markets"
+  ]
+ },
+ {
+  "name": "Finst",
+  "country": "NL",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "finst"
+  ]
+ },
+ {
+  "name": "Shares",
+  "country": "FR",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "shares",
+   "sharesapp"
+  ]
+ },
+ {
+  "name": "Bitpanda",
+  "country": "AT",
+  "segment": "Крипто",
+  "slugs": [
+   "bitpanda"
+  ]
+ },
+ {
+  "name": "Kraken",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "kraken",
+   "krakendigitalassetexchange"
+  ]
+ },
+ {
+  "name": "Coinbase",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "coinbase"
+  ]
+ },
+ {
+  "name": "Bitstamp",
+  "country": "LU",
+  "segment": "Крипто",
+  "slugs": [
+   "bitstamp"
+  ]
+ },
+ {
+  "name": "OKX",
+  "country": "SC",
+  "segment": "Крипто",
+  "slugs": [
+   "okx"
+  ]
+ },
+ {
+  "name": "Bybit",
+  "country": "AE",
+  "segment": "Крипто",
+  "slugs": [
+   "bybit"
+  ]
+ },
+ {
+  "name": "Crypto.com",
+  "country": "SG",
+  "segment": "Крипто",
+  "slugs": [
+   "cryptocom",
+   "crypto-com",
+   "crypto"
+  ]
+ },
+ {
+  "name": "Gemini",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "gemini"
+  ]
+ },
+ {
+  "name": "Ledger",
+  "country": "FR",
+  "segment": "Крипто",
+  "slugs": [
+   "ledger"
+  ]
+ },
+ {
+  "name": "Nexo",
+  "country": "BG/CH",
+  "segment": "Крипто",
+  "slugs": [
+   "nexo"
+  ]
+ },
+ {
+  "name": "Bitget",
+  "country": "SC",
+  "segment": "Крипто",
+  "slugs": [
+   "bitget"
+  ]
+ },
+ {
+  "name": "KuCoin",
+  "country": "SC",
+  "segment": "Крипто",
+  "slugs": [
+   "kucoin"
+  ]
+ },
+ {
+  "name": "Uphold",
+  "country": "US/UK",
+  "segment": "Крипто",
+  "slugs": [
+   "uphold"
+  ]
+ },
+ {
+  "name": "Blockchain.com",
+  "country": "UK",
+  "segment": "Крипто",
+  "slugs": [
+   "blockchain",
+   "blockchaincom"
+  ]
+ },
+ {
+  "name": "Consensys",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "consensys"
+  ]
+ },
+ {
+  "name": "Phantom",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "phantom"
+  ]
+ },
+ {
+  "name": "Exodus",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "exodus",
+   "exodusmovement"
+  ]
+ },
+ {
+  "name": "Binance",
+  "country": "AE",
+  "segment": "Крипто",
+  "slugs": [
+   "binance"
+  ]
+ },
+ {
+  "name": "Bitvavo",
+  "country": "NL",
+  "segment": "Крипто",
+  "slugs": [
+   "bitvavo"
+  ]
+ },
+ {
+  "name": "zondacrypto",
+  "country": "PL/EE",
+  "segment": "Крипто",
+  "slugs": [
+   "zondacrypto",
+   "zonda"
+  ]
+ },
+ {
+  "name": "SwissBorg",
+  "country": "CH",
+  "segment": "Крипто",
+  "slugs": [
+   "swissborg"
+  ]
+ },
+ {
+  "name": "Wirex",
+  "country": "UK",
+  "segment": "Крипто",
+  "slugs": [
+   "wirex"
+  ]
+ },
+ {
+  "name": "Bitfinex",
+  "country": "VG",
+  "segment": "Крипто",
+  "slugs": [
+   "bitfinex"
+  ]
+ },
+ {
+  "name": "Luno",
+  "country": "UK",
+  "segment": "Крипто",
+  "slugs": [
+   "luno"
+  ]
+ },
+ {
+  "name": "CoinDCX",
+  "country": "IN",
+  "segment": "Крипто",
+  "slugs": [
+   "coindcx"
+  ]
+ },
+ {
+  "name": "CoinSwitch",
+  "country": "IN",
+  "segment": "Крипто",
+  "slugs": [
+   "coinswitch"
+  ]
+ },
+ {
+  "name": "Mercado Bitcoin",
+  "country": "BR",
+  "segment": "Крипто",
+  "slugs": [
+   "mercadobitcoin"
+  ]
+ },
+ {
+  "name": "Bitso",
+  "country": "MX",
+  "segment": "Крипто",
+  "slugs": [
+   "bitso"
+  ]
+ },
+ {
+  "name": "Ripio",
+  "country": "AR",
+  "segment": "Крипто",
+  "slugs": [
+   "ripio"
+  ]
+ },
+ {
+  "name": "Lemon Cash",
+  "country": "AR",
+  "segment": "Крипто",
+  "slugs": [
+   "lemoncash",
+   "lemon"
+  ]
+ },
+ {
+  "name": "Buenbit",
+  "country": "AR",
+  "segment": "Крипто",
+  "slugs": [
+   "buenbit"
+  ]
+ },
+ {
+  "name": "Paxos",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "paxos"
+  ]
+ },
+ {
+  "name": "Circle",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "circle"
+  ]
+ },
+ {
+  "name": "Anchorage Digital",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "anchorage",
+   "anchoragedigital"
+  ]
+ },
+ {
+  "name": "Fireblocks",
+  "country": "US/IL",
+  "segment": "Крипто",
+  "slugs": [
+   "fireblocks"
+  ]
+ },
+ {
+  "name": "Chainalysis",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "chainalysis"
+  ]
+ },
+ {
+  "name": "MoonPay",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "moonpay"
+  ]
+ },
+ {
+  "name": "Ramp Network",
+  "country": "UK/PL",
+  "segment": "Крипто",
+  "slugs": [
+   "rampnetwork",
+   "ramp"
+  ]
+ },
+ {
+  "name": "Zengo",
+  "country": "IL",
+  "segment": "Крипто",
+  "slugs": [
+   "zengo"
+  ]
+ },
+ {
+  "name": "Trust Wallet",
+  "country": "AE",
+  "segment": "Крипто",
+  "slugs": [
+   "trustwallet"
+  ]
+ },
+ {
+  "name": "Rainbow",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "rainbow"
+  ]
+ },
+ {
+  "name": "Argent",
+  "country": "UK",
+  "segment": "Крипто",
+  "slugs": [
+   "argent"
+  ]
+ },
+ {
+  "name": "Safe",
+  "country": "DE",
+  "segment": "Крипто",
+  "slugs": [
+   "safe",
+   "safeglobal"
+  ]
+ },
+ {
+  "name": "Uniswap Labs",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "uniswaplabs",
+   "uniswap"
+  ]
+ },
+ {
+  "name": "dYdX",
+  "country": "US",
+  "segment": "Крипто",
+  "slugs": [
+   "dydx",
+   "dydxopsservices"
+  ]
+ },
+ {
+  "name": "1inch",
+  "country": "CH",
+  "segment": "Крипто",
+  "slugs": [
+   "1inch"
+  ]
+ },
+ {
+  "name": "Bitcoin Suisse",
+  "country": "CH",
+  "segment": "Крипто",
+  "slugs": [
+   "bitcoinsuisse"
+  ]
+ },
+ {
+  "name": "Revolut Trading",
+  "country": "UK",
+  "segment": "Брокеры и трейдинг",
+  "slugs": [
+   "revolut"
+  ]
+ }
+]

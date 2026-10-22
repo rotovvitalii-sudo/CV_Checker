@@ -1,0 +1,16 @@
+{
+  "title": "Staff Product Manager (AI training, presentations)", "company": "Globex",
+  "url": "", "source": "calibration (негативный эталон)",
+  "date_posted": "2026-09", "location": "Fully remote", "work_format": "remote",
+  "relocation_support": "unknown", "seniority": "senior", "role_family": "other",
+  "domain": "AI lab / expert network", "business_model": "B2B", "platform": "unknown",
+  "company_stage": "экспертная сеть, контракт",
+  "current_task": "Создавать и оценивать AI-презентации для обучения языковой модели",
+  "must_have_experience": ["staff PM в топовой техкомпании", "экспертный PowerPoint"],
+  "nice_to_have": [],
+  "ai_requirement": "uses_ai_tools", "languages_required": ["English"], "salary": "$80/hour",
+  "scores": {"task_fit": 0, "domain": 0, "role_type": 0, "logistics": 2},
+  "why": "Нет связи с запуском академий и образовательных продуктов. Это подработка на оценке презентаций, а не продуктовая роль. Домен — AI-лаборатория, не EdTech.",
+  "anchor_case": "—",
+  "gaps": ["staff PM в топовой техкомпании", "PowerPoint"], "expected_min": 0, "expected_max": 4
+}

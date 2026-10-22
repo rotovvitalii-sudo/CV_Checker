@@ -1,0 +1,5 @@
+{
+  "must": ["Head of Product", "product strategy", "roadmap", "academy", "LMS", "education-led onboarding", "learner journeys", "onboarding", "activation", "retention", "B2B2C", "partnerships", "subscription monetization|subscription", "funnels", "cohorts", "A/B tests|A/B testing", "analytics", "team leadership|lead a team", "product managers", "content production", "AI tools", "English"],
+  "nice": ["fintech", "banking", "bank partnerships", "founder", "Portuguese", "Spanish", "learning paths", "learning platform", "customer education", "financial education", "sales", "design", "hiring", "pilot", "partner banks", "sign-up", "first action", "EdTech"],
+  "task": ["academy|learning academy", "learner journeys|learning paths", "partner banks|bank partners|B2B2C", "roadmap|product strategy"]
+}

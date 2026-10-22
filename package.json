@@ -1,0 +1,35 @@
+{
+  "name": "cv_checker",
+  "version": "1.0.0",
+  "description": "Agentic job-application copilot: tailors a one-page ATS CV and cover letter to each vacancy from a verified knowledge base, scores job fit and tracks the funnel. Built on Claude Code.",
+  "main": "web/server.js",
+  "scripts": {
+    "app": "node web/server.js",
+    "demo:setup": "bash scripts/setup-demo.sh",
+    "test": ".venv/bin/python tests/smoke.py",
+    "check:public": "bash scripts/check-public.sh",
+    "backup:data": "bash scripts/backup-data.sh"
+  },
+  "keywords": [
+    "claude-code",
+    "ai-agents",
+    "cv",
+    "resume",
+    "ats",
+    "cover-letter",
+    "job-search",
+    "llm"
+  ],
+  "author": "rotovvitalii-sudo",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "docx": "^9.7.1",
+    "express": "^5.3.0",
+    "marked": "^15.0.12"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  },
+  "private": true
+}

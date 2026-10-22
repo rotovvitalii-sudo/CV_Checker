@@ -1,0 +1,47 @@
+# Зависимости — ставятся заново: npm install, python -m venv .venv
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Служебное macOS
+.DS_Store
+
+# ---------- Личные данные владельца — в публичный репозиторий не попадают никогда ----------
+# Бэкап — отдельный приватный репозиторий (scripts/backup-data.sh, git-каталог .git-data/).
+# Для запуска на чистом клоне: npm run demo:setup (демо-кандидат из examples/demo/).
+.git-data/
+/knowledge-base/
+/vacancies/
+/output/
+/Master_CV.pdf
+/job-fit-search-brief.md
+/CLAUDE.local.md
+job-search/corpus/
+job-search/candidates/
+job-search/digests/
+job-search/signals.md
+
+# Рабочие данные приложения: заявки, входящие, журнал агента, уведомления, граница зарплаты (limit.json),
+# профиль браузера для автозаполнения (browser-profile)
+web/data/
+
+# Кэш сборщиков вакансий — скачивается заново (fetch.py, edtech.py)
+job-search/raw/
+job-search/seen.json
+job-search/cursor.json
+
+# Скриншоты чужого продукта (разбор Aircareer) — только локально
+/aircareer/
+docs/aircareer/
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
+
+# Временные файлы LibreOffice / Office
+~$*
+.~lock.*
+
+# Логи запусков агента (полные промпты и ответы)
+*.log
+.public-check-patterns

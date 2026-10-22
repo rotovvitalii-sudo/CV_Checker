@@ -1,0 +1,16 @@
+{
+  "title": "Country Manager, Poland", "company": "Acme",
+  "url": "", "source": "calibration (текущий процесс)",
+  "date_posted": "2026-09", "location": "Poland, remote or hybrid", "work_format": "hybrid",
+  "relocation_support": "unknown", "seniority": "head", "role_family": "gm",
+  "domain": "EdTech", "business_model": "B2C", "platform": "web",
+  "company_stage": "10 рынков, Польша — новый",
+  "current_task": "Запустить и вырастить рынок Польши для образовательной платформы: бренд, каналы, партнёрства, команда",
+  "must_have_experience": ["запуск рынка", "рост выручки", "маркетинг и продажи", "построение команды"],
+  "nice_to_have": ["EdTech", "польский рынок"],
+  "ai_requirement": "none", "languages_required": ["Polish", "English"], "salary": "",
+  "scores": {"task_fit": 3, "domain": 2, "role_type": 1, "logistics": 2},
+  "why": "EdTech и рост образовательного продукта на новом рынке — близко к ядру, но это не запуск академии, а GM-роль со всей коммерцией. Польский B2 при требовании fluent.",
+  "anchor_case": "Northwind Academy: запуск академии на новом рынке LatAm",
+  "gaps": ["польский рынок", "Polish fluency"], "expected_min": 7, "expected_max": 9
+}

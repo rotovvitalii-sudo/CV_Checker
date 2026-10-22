@@ -1,0 +1,15 @@
+{"sentences": [
+  {"text": "Hi Lumen team,", "tag": "link"},
+  {"text": "Lumen Academy caught my attention because putting learning paths inside bank onboarding is the kind of problem I like.", "tag": "link"},
+  {"text": "At Northwind Learning I built a customer academy for a fintech partner, a broker, and put it inside their onboarding instead of a separate course site.", "tag": "fact", "sources": ["knowledge-base/cards/northwind-fintech-academy.md"]},
+  {"text": "New clients were signing up and never making a first trade, so I mapped the path from sign-up to first trade and split it into six short lessons.", "tag": "fact", "sources": ["knowledge-base/cards/northwind-fintech-academy.md"]},
+  {"text": "Every week I looked at the funnel and cut the steps where people dropped off.", "tag": "fact", "sources": ["knowledge-base/cards/northwind-fintech-academy.md"]},
+  {"text": "Account activation grew by 31% in six months, according to the partner's report.", "tag": "fact", "sources": ["knowledge-base/cards/northwind-fintech-academy.md"]},
+  {"text": "Before that, I moved the same company from cohort launches to a subscription, piloted in one country and then rolled out to nine, and it reached 12K+ paid learners.", "tag": "fact", "sources": ["knowledge-base/cards/northwind-subscription-model.md"]},
+  {"text": "I also brought AI tools into content production, which cut the time to make a course from four weeks to five days.", "tag": "fact", "sources": ["output/Head of Product - Lumen Learn/CV.md"]},
+  {"text": "I should be upfront about what I have not done yet.", "tag": "link"},
+  {"text": "I have not taken an academy to 10 partner banks, and I can't show retention figures from it.", "tag": "link"},
+  {"text": "I would like to talk about how I would approach the first three months.", "tag": "link"},
+  {"text": "Best,", "tag": "link"},
+  {"text": "Alex Morgan", "tag": "link"}
+]}

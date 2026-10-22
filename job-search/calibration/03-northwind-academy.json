@@ -1,0 +1,16 @@
+{
+  "title": "Product Lead (education-led acquisition)", "company": "Northwind Academy",
+  "url": "", "source": "calibration (историческая, фактический найм кандидата 2023)",
+  "date_posted": "2022-12", "location": "LatAm / remote", "work_format": "remote",
+  "relocation_support": "unknown", "seniority": "lead", "role_family": "product_lead",
+  "domain": "EdTech / брокер / финансовое образование", "business_model": "B2B2C", "platform": "web",
+  "company_stage": "запуск академии для партнёрского CFD-брокера в LatAm",
+  "current_task": "Построить образовательную воронку (академию) для CFD-брокера в LatAm — education-led acquisition",
+  "must_have_experience": ["запуск академии", "education-led acquisition", "продуктовое лидерство"],
+  "nice_to_have": ["опыт в брокерах", "испанский рынок"],
+  "ai_requirement": "none", "languages_required": ["English", "Russian"], "salary": "",
+  "scores": {"task_fit": 4, "domain": 2, "role_type": 2, "logistics": 2},
+  "why": "Идеальный фит: компания строила образовательную воронку для брокера, а у меня к тому моменту было два запуска академий подряд. Наём случился через знакомство до публикации.",
+  "anchor_case": "Академия Brightpath + LMS в FinAcademy Pro",
+  "gaps": [], "expected_min": 9, "expected_max": 10
+}

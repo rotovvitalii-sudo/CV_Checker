@@ -1,0 +1,41 @@
+[
+ {"expect":"A","note":"эталон: Northwind Academy, фактический найм кандидата 2023",
+  "title":"Product Lead, Education","company":"Northwind Academy",
+  "description":"We are a subscription-based EdTech platform for finance education in LatAm. We are building an academy for our partner CFD broker: an education-led acquisition funnel that turns students into funded trading accounts. You will own the learning platform, the course catalog and the activation journey for our students."},
+
+ {"expect":"A","note":"эталон: Brightpath, фактический найм кандидата 2022",
+  "title":"Senior Product Marketing Manager","company":"Brightpath",
+  "description":"Brightpath is a Web3 community-driven ecosystem with a native token. We are launching an academy to onboard crypto newcomers: online courses, learner incentives and certification program. You will own positioning and go-to-market for the academy and grow our learners base."},
+
+ {"expect":"A","note":"эталон: FinAcademy Pro, фактический найм кандидата 2021",
+  "title":"Product Owner","company":"FinAcademy Pro",
+  "description":"Financial academy for professionals. We are replacing Moodle with our own custom LMS and rebuilding our flagship courses. You will own the PRD and backlog for the new learning platform and work with our students and instructors."},
+
+ {"expect":"B","note":"ключевой сигнал: брокер начинает строить обучение",
+  "title":"Customer Education Manager","company":"NordFX Trading",
+  "description":"NordFX is an online trading broker and CFD provider. We are building a trading academy for our clients: course catalog, webinars and a certification program for new traders. You will design the curriculum and the LMS for our users."},
+
+ {"expect":"B","note":"сигнал: SaaS строит академию для клиентов",
+  "title":"Instructional Designer, Customer Academy","company":"Fleetio",
+  "description":"Fleetio is a fleet management SaaS platform. We are launching a customer academy to help our users get value faster. You will build course content in our LMS and design certification program for end users and partner enablement."},
+
+ {"expect":null,"note":"шум: внутреннее обучение сотрудников в фарме",
+  "title":"Instructional Designer","company":"Strive Pharmacy",
+  "description":"Pharmacy company. You will design e-learning curriculum in our LMS for employee development, onboarding new hires and compliance training for our employees."},
+
+ {"expect":null,"note":"шум: школа нанимает учителя",
+  "title":"Virtual High School English Teacher","company":"ACCEL Schools",
+  "description":"Online school. Teach English to high-school students, follow the curriculum, use our learning management system."},
+
+ {"expect":null,"note":"шум: продакт в финтехе без задачи обучения",
+  "title":"Senior Product Manager","company":"Ratehub.ca",
+  "description":"Ratehub is a fintech marketplace for mortgages and insurance. You will own the comparison product for our users, run experiments and grow conversion."},
+
+ {"expect":null,"note":"шум: инженерная роль в EdTech",
+  "title":"Application Security Engineer","company":"TripleTen",
+  "description":"TripleTen is an online bootcamp. We teach students to code. You will secure our learning platform infrastructure."},
+
+ {"expect":"A","note":"целевая: EdTech ищет продуктового лида на академию",
+  "title":"Head of Product","company":"Skillverse",
+  "description":"EdTech company, online education platform. We are scaling our learning platform and course catalog for our learners worldwide. You will own product strategy for the academy."}
+]

@@ -1,0 +1,1087 @@
+[
+ {
+  "name": "Duolingo",
+  "country": "US",
+  "segment": "Языки"
+ },
+ {
+  "name": "Babbel",
+  "country": "DE",
+  "segment": "Языки"
+ },
+ {
+  "name": "Busuu",
+  "country": "UK",
+  "segment": "Языки"
+ },
+ {
+  "name": "Memrise",
+  "country": "UK",
+  "segment": "Языки"
+ },
+ {
+  "name": "Preply",
+  "country": "US/UA",
+  "segment": "Языки"
+ },
+ {
+  "name": "italki",
+  "country": "HK",
+  "segment": "Языки"
+ },
+ {
+  "name": "Cambly",
+  "country": "US",
+  "segment": "Языки"
+ },
+ {
+  "name": "Lingoda",
+  "country": "DE",
+  "segment": "Языки"
+ },
+ {
+  "name": "Speak",
+  "country": "US",
+  "segment": "Языки",
+  "slugs": [
+   "speak",
+   "usespeak"
+  ]
+ },
+ {
+  "name": "Praktika",
+  "country": "US",
+  "segment": "Языки",
+  "slugs": [
+   "praktika",
+   "praktika-ai"
+  ]
+ },
+ {
+  "name": "ELSA Speak",
+  "country": "US/VN",
+  "segment": "Языки",
+  "slugs": [
+   "elsa",
+   "elsaspeak",
+   "elsa-speak"
+  ]
+ },
+ {
+  "name": "Promova",
+  "country": "UA",
+  "segment": "Языки"
+ },
+ {
+  "name": "Lingokids",
+  "country": "ES",
+  "segment": "K-12"
+ },
+ {
+  "name": "Rosetta Stone",
+  "country": "US",
+  "segment": "Языки"
+ },
+ {
+  "name": "Mondly",
+  "country": "RO",
+  "segment": "Языки"
+ },
+ {
+  "name": "Langua",
+  "country": "US",
+  "segment": "Языки"
+ },
+ {
+  "name": "Coursera",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Udemy",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Skillshare",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "MasterClass",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Domestika",
+  "country": "ES",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Crehana",
+  "country": "PE",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Platzi",
+  "country": "CO",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Outschool",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Brilliant",
+  "country": "US",
+  "segment": "Consumer",
+  "slugs": [
+   "brilliant",
+   "brilliantorg"
+  ]
+ },
+ {
+  "name": "DataCamp",
+  "country": "US/BE",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Codecademy",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Pluralsight",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Udacity",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "2U",
+  "country": "US",
+  "segment": "Higher-ed",
+  "slugs": [
+   "2u",
+   "2uinc"
+  ]
+ },
+ {
+  "name": "Sololearn",
+  "country": "US/AM",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Mimo",
+  "country": "AT",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "mimo",
+   "getmimo"
+  ]
+ },
+ {
+  "name": "Brainly",
+  "country": "PL",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Quizlet",
+  "country": "US",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Chegg",
+  "country": "US",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Learneo (Course Hero)",
+  "country": "US",
+  "segment": "Consumer",
+  "slugs": [
+   "learneo",
+   "coursehero"
+  ]
+ },
+ {
+  "name": "Studocu",
+  "country": "NL",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Knowunity",
+  "country": "DE",
+  "segment": "Consumer"
+ },
+ {
+  "name": "simpleclub",
+  "country": "DE",
+  "segment": "K-12"
+ },
+ {
+  "name": "StudySmarter",
+  "country": "DE",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Kahoot",
+  "country": "NO",
+  "segment": "K-12"
+ },
+ {
+  "name": "Synthesis",
+  "country": "US",
+  "segment": "K-12",
+  "slugs": [
+   "synthesis",
+   "synthesisschool",
+   "synthesis-school"
+  ]
+ },
+ {
+  "name": "Khan Academy",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Newsela",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Nearpod",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Seesaw",
+  "country": "US",
+  "segment": "K-12",
+  "slugs": [
+   "seesaw",
+   "seesawlearning"
+  ]
+ },
+ {
+  "name": "ClassDojo",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Edpuzzle",
+  "country": "US/ES",
+  "segment": "K-12"
+ },
+ {
+  "name": "Quizizz (Wayground)",
+  "country": "US/IN",
+  "segment": "K-12",
+  "slugs": [
+   "quizizz",
+   "wayground"
+  ]
+ },
+ {
+  "name": "Brightwheel",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Kiddom",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Amira Learning",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Age of Learning",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Prodigy Education",
+  "country": "CA",
+  "segment": "K-12",
+  "slugs": [
+   "prodigygame",
+   "prodigy-education",
+   "prodigyeducation"
+  ]
+ },
+ {
+  "name": "IXL Learning",
+  "country": "US",
+  "segment": "K-12",
+  "slugs": [
+   "ixl",
+   "ixllearning"
+  ]
+ },
+ {
+  "name": "Zearn",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Amplify",
+  "country": "US",
+  "segment": "K-12",
+  "slugs": [
+   "amplify",
+   "amplifyeducation"
+  ]
+ },
+ {
+  "name": "BrainPOP",
+  "country": "US",
+  "segment": "K-12"
+ },
+ {
+  "name": "Twinkl",
+  "country": "UK",
+  "segment": "K-12"
+ },
+ {
+  "name": "Boclips",
+  "country": "UK",
+  "segment": "K-12"
+ },
+ {
+  "name": "Third Space Learning",
+  "country": "UK",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Atom Learning",
+  "country": "UK",
+  "segment": "K-12"
+ },
+ {
+  "name": "MyTutor",
+  "country": "UK",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Sparx Learning",
+  "country": "UK",
+  "segment": "K-12",
+  "slugs": [
+   "sparx",
+   "sparxlearning"
+  ]
+ },
+ {
+  "name": "CENTURY Tech",
+  "country": "UK",
+  "segment": "K-12",
+  "slugs": [
+   "centurytech",
+   "century-tech"
+  ]
+ },
+ {
+  "name": "Sofatutor",
+  "country": "DE",
+  "segment": "K-12"
+ },
+ {
+  "name": "bettermarks",
+  "country": "DE",
+  "segment": "K-12"
+ },
+ {
+  "name": "GoStudent",
+  "country": "AT",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Superprof",
+  "country": "FR",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Nerdy (Varsity Tutors)",
+  "country": "US",
+  "segment": "Репетиторство",
+  "slugs": [
+   "nerdy",
+   "varsitytutors"
+  ]
+ },
+ {
+  "name": "Wyzant",
+  "country": "US",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Cluey Learning",
+  "country": "AU",
+  "segment": "Репетиторство",
+  "slugs": [
+   "cluey",
+   "clueylearning"
+  ]
+ },
+ {
+  "name": "Snapask",
+  "country": "HK",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Lingumi",
+  "country": "UK",
+  "segment": "Языки"
+ },
+ {
+  "name": "Kajabi",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Teachable",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Thinkific",
+  "country": "CA",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Podia",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "LearnWorlds",
+  "country": "CY",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Mighty Networks",
+  "country": "US",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "mightynetworks",
+   "mighty-networks"
+  ]
+ },
+ {
+  "name": "Maven",
+  "country": "US",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "maven",
+   "mavenhq"
+  ]
+ },
+ {
+  "name": "Reforge",
+  "country": "US",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Hotmart",
+  "country": "BR",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Graphy",
+  "country": "IN",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Docebo",
+  "country": "IT/CA",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "360Learning",
+  "country": "FR",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "TalentLMS (Epignosis)",
+  "country": "GR",
+  "segment": "Corporate learning",
+  "slugs": [
+   "epignosis",
+   "talentlms"
+  ]
+ },
+ {
+  "name": "Absorb Software",
+  "country": "CA",
+  "segment": "Corporate learning",
+  "slugs": [
+   "absorb",
+   "absorbsoftware",
+   "absorb-software"
+  ]
+ },
+ {
+  "name": "LearnUpon",
+  "country": "IE",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Go1",
+  "country": "AU",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Sana Labs",
+  "country": "SE",
+  "segment": "Corporate learning",
+  "slugs": [
+   "sanalabs",
+   "sana-labs",
+   "sana"
+  ]
+ },
+ {
+  "name": "WorkRamp",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Thought Industries",
+  "country": "US",
+  "segment": "Corporate learning",
+  "slugs": [
+   "thoughtindustries",
+   "thought-industries"
+  ]
+ },
+ {
+  "name": "Skilljar",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Degreed",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "NovoEd",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Uplimit",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Coassemble",
+  "country": "AU",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Arist",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "EdApp",
+  "country": "AU",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Multiverse",
+  "country": "UK",
+  "segment": "Буткемпы",
+  "slugs": [
+   "multiverse",
+   "multiverseio"
+  ]
+ },
+ {
+  "name": "Springboard",
+  "country": "US",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "General Assembly",
+  "country": "US",
+  "segment": "Буткемпы",
+  "slugs": [
+   "generalassembly",
+   "general-assembly"
+  ]
+ },
+ {
+  "name": "Le Wagon",
+  "country": "FR",
+  "segment": "Буткемпы",
+  "slugs": [
+   "lewagon",
+   "le-wagon"
+  ]
+ },
+ {
+  "name": "Ironhack",
+  "country": "ES",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "OpenClassrooms",
+  "country": "FR",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "Masterschool",
+  "country": "IL/DE",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "TripleTen",
+  "country": "US",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "Code Institute",
+  "country": "IE",
+  "segment": "Буткемпы",
+  "slugs": [
+   "codeinstitute",
+   "code-institute"
+  ]
+ },
+ {
+  "name": "Turing College",
+  "country": "LT",
+  "segment": "Буткемпы",
+  "slugs": [
+   "turingcollege",
+   "turing-college"
+  ]
+ },
+ {
+  "name": "Mate academy",
+  "country": "UA",
+  "segment": "Буткемпы",
+  "slugs": [
+   "mateacademy",
+   "mate-academy"
+  ]
+ },
+ {
+  "name": "Hyperskill",
+  "country": "NL",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "BloomTech",
+  "country": "US",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "Laboratoria",
+  "country": "PE",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "Henry",
+  "country": "AR",
+  "segment": "Буткемпы",
+  "slugs": [
+   "soyhenry",
+   "henry"
+  ]
+ },
+ {
+  "name": "Coderhouse",
+  "country": "AR",
+  "segment": "Буткемпы"
+ },
+ {
+  "name": "Digital House",
+  "country": "AR/BR",
+  "segment": "Буткемпы",
+  "slugs": [
+   "digitalhouse",
+   "digital-house"
+  ]
+ },
+ {
+  "name": "Descomplica",
+  "country": "BR",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Alura",
+  "country": "BR",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Geekie",
+  "country": "BR",
+  "segment": "K-12"
+ },
+ {
+  "name": "Tera",
+  "country": "BR",
+  "segment": "Буткемпы",
+  "slugs": [
+   "somostera",
+   "tera"
+  ]
+ },
+ {
+  "name": "Instructure",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "D2L",
+  "country": "CA",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Anthology",
+  "country": "US",
+  "segment": "Higher-ed",
+  "slugs": [
+   "anthology",
+   "anthologyinc"
+  ]
+ },
+ {
+  "name": "Handshake",
+  "country": "US",
+  "segment": "Higher-ed",
+  "slugs": [
+   "handshake",
+   "joinhandshake"
+  ]
+ },
+ {
+  "name": "Kaltura",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Top Hat",
+  "country": "CA",
+  "segment": "Higher-ed",
+  "slugs": [
+   "tophat",
+   "top-hat"
+  ]
+ },
+ {
+  "name": "Packback",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Labster",
+  "country": "DK",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Grammarly",
+  "country": "US/UA",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Turnitin",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Noodle",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Kira Learning",
+  "country": "US",
+  "segment": "K-12",
+  "slugs": [
+   "kira",
+   "kiralearning",
+   "kira-learning"
+  ]
+ },
+ {
+  "name": "Emeritus (Eruditus)",
+  "country": "IN/SG",
+  "segment": "Higher-ed",
+  "slugs": [
+   "emeritus",
+   "eruditus"
+  ]
+ },
+ {
+  "name": "upGrad",
+  "country": "IN",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Unacademy",
+  "country": "IN",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Scaler",
+  "country": "IN",
+  "segment": "Буткемпы",
+  "slugs": [
+   "scaler",
+   "interviewbit"
+  ]
+ },
+ {
+  "name": "Classplus",
+  "country": "IN",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Teachmint",
+  "country": "IN",
+  "segment": "K-12"
+ },
+ {
+  "name": "Leap Scholar",
+  "country": "IN",
+  "segment": "Higher-ed",
+  "slugs": [
+   "leapscholar",
+   "leap"
+  ]
+ },
+ {
+  "name": "Vedantu",
+  "country": "IN",
+  "segment": "Репетиторство"
+ },
+ {
+  "name": "Physics Wallah",
+  "country": "IN",
+  "segment": "Consumer",
+  "slugs": [
+   "physicswallah",
+   "pw"
+  ]
+ },
+ {
+  "name": "Ruangguru",
+  "country": "ID",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Simplilearn",
+  "country": "IN",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "Great Learning",
+  "country": "IN",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "greatlearning",
+   "great-learning"
+  ]
+ },
+ {
+  "name": "Finimize",
+  "country": "UK",
+  "segment": "Финобразование"
+ },
+ {
+  "name": "Investopedia (Dotdash Meredith)",
+  "country": "US",
+  "segment": "Финобразование",
+  "slugs": [
+   "dotdashmeredith"
+  ]
+ },
+ {
+  "name": "Elevate Labs",
+  "country": "US",
+  "segment": "Consumer",
+  "slugs": [
+   "elevatelabs",
+   "elevate"
+  ]
+ },
+ {
+  "name": "Blinkist",
+  "country": "DE",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Headway",
+  "country": "UA",
+  "segment": "Consumer",
+  "slugs": [
+   "headway",
+   "headwayapp",
+   "get-headway"
+  ]
+ },
+ {
+  "name": "Imprint",
+  "country": "US",
+  "segment": "Consumer",
+  "slugs": [
+   "imprint",
+   "imprintapp"
+  ]
+ },
+ {
+  "name": "Exercism",
+  "country": "UK",
+  "segment": "Курсы и LMS"
+ },
+ {
+  "name": "CodeSignal",
+  "country": "US",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "edX (2U)",
+  "country": "US",
+  "segment": "Higher-ed",
+  "slugs": [
+   "edx"
+  ]
+ },
+ {
+  "name": "Eduflow (Multiverse)",
+  "country": "DK",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "eduflow"
+  ]
+ },
+ {
+  "name": "Odilo",
+  "country": "ES",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Smartick",
+  "country": "ES",
+  "segment": "K-12"
+ },
+ {
+  "name": "Prometheus",
+  "country": "UA",
+  "segment": "Курсы и LMS",
+  "slugs": [
+   "prometheus-org"
+  ]
+ },
+ {
+  "name": "Testportal",
+  "country": "PL",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Pearson",
+  "country": "UK",
+  "segment": "Higher-ed",
+  "slugs": [
+   "pearson"
+  ]
+ },
+ {
+  "name": "McGraw Hill",
+  "country": "US",
+  "segment": "Higher-ed",
+  "slugs": [
+   "mcgrawhill",
+   "mheducation"
+  ]
+ },
+ {
+  "name": "Cengage",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Kaplan",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Study.com",
+  "country": "US",
+  "segment": "Consumer",
+  "slugs": [
+   "studycom",
+   "study"
+  ]
+ },
+ {
+  "name": "Numerade",
+  "country": "US",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Photomath",
+  "country": "HR",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Fiveable",
+  "country": "US",
+  "segment": "Consumer"
+ },
+ {
+  "name": "Magoosh",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "PrepScholar",
+  "country": "US",
+  "segment": "Higher-ed"
+ },
+ {
+  "name": "Kognity",
+  "country": "SE",
+  "segment": "K-12"
+ },
+ {
+  "name": "Sdui",
+  "country": "DE",
+  "segment": "K-12"
+ },
+ {
+  "name": "Eduki",
+  "country": "DE",
+  "segment": "K-12",
+  "slugs": [
+   "eduki",
+   "tutory"
+  ]
+ },
+ {
+  "name": "Lepaya",
+  "country": "NL",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Coachhub",
+  "country": "DE",
+  "segment": "Corporate learning"
+ },
+ {
+  "name": "Speexx",
+  "country": "DE",
+  "segment": "Corporate learning"
+ }
+]

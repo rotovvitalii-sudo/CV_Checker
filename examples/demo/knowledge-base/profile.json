@@ -1,0 +1,10 @@
+{
+  "_note": "Профиль поиска (C2). Читают scorer/score_job.py (жёсткие фильтры) и промпт фита (логистика). Правится в приложении: экран «Профиль». Демо-кандидат.",
+  "onsite_locations": ["lisbon", "lisboa", "portugal"],
+  "relocation": "with_support",
+  "work_formats": ["remote", "hybrid", "onsite"],
+  "languages": ["english", "en", "portuguese", "pt", "spanish", "es"],
+  "seniority_exclude": ["junior", "mid"],
+  "min_salary": { "amount": null, "currency": "EUR", "period": "year" },
+  "money": { "currency": "EUR", "period": "month", "form": "B2B net", "target": 6000, "anchorFrom": 6000, "anchorTo": 7000 }
+}

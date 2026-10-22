@@ -1,0 +1,176 @@
+{
+  "apps": {
+    "Head of Product - Lumen Learn": {
+      "status": "ready",
+      "dictation": "",
+      "created": 1792653655878,
+      "fit": {
+        "total": 10,
+        "scores": {
+          "task_fit": 4,
+          "domain": 2,
+          "role_type": 2,
+          "logistics": 2
+        },
+        "bucket": "save",
+        "flags": [],
+        "hard_filters": [],
+        "current_task": "Запуск Lumen Academy: управляемых обучающих треков, которые партнёрские банки встраивают в онбординг, от пилота до 10 банков.",
+        "why": "Компания запускает академию, которую банки встраивают в онбординг: прямой аналог Northwind FinTech Academy (B2B2C, путь до первого действия, активация +31%). Подписочная монетизация закрыта карточкой Northwind, LMS — FinAcademy. Удалёнка EU, английский C1, португальский/испанский в плюс — логистика подходит.",
+        "anchor_case": "Академия для брокера-партнёра, встроенная в его онбординг: тот же B2B2C-паттерн, путь ученика до первого действия, активация +31%.",
+        "anchor_card": "northwind-fintech-academy",
+        "gaps": [
+          "Руководство командой из 6 человек (в карточках команда 3 человека; 2+ года лидерства не подтверждены карточкой)",
+          "A/B-тесты и когортный анализ как практика (в карточках только разбор воронки)",
+          "Использование AI-инструментов в производстве контента",
+          "Масштабирование академии до 10 партнёров (в базе один партнёр)"
+        ],
+        "title": "Head of Product",
+        "company": "Lumen Learn",
+        "url": "",
+        "location": "Remote (EU)",
+        "work_format": "remote",
+        "seniority": "head",
+        "domain": "EdTech / FinTech (financial education, bank partners)",
+        "salary": "",
+        "what_you_do": [
+          "Product strategy and roadmap for Lumen Academy, from first pilot to 10 partner banks",
+          "Design learner journeys from sign-up to first action",
+          "Set activation and retention metrics with partnerships and sales (B2B2C)",
+          "Lead a team of 6: two PMs, design and content",
+          "Use AI tools to speed up content production"
+        ],
+        "source": "manual",
+        "date_posted": ""
+      },
+      "baseVersion": 1,
+      "cv": {
+        "stamp": "5377964433427.49:v1:t30:w1:Head of Product",
+        "coverage": 0.806,
+        "must": "19/22",
+        "nice": "12/18",
+        "mustMiss": [
+          "retention",
+          "cohorts",
+          "product managers"
+        ],
+        "topThird": {
+          "pass": true,
+          "task": true,
+          "hit": 12,
+          "need": 3,
+          "missingTop": [
+            "learner journeys",
+            "partnerships",
+            "funnels",
+            "A/B tests|A/B testing",
+            "content production",
+            "AI tools"
+          ]
+        },
+        "pages": 1,
+        "bottomFree": 67.3,
+        "lengthOk": true,
+        "words": 448,
+        "change": 0.196,
+        "changeOk": true,
+        "taglineOk": true,
+        "expectedTitle": "Head of Product",
+        "tagline": "Head of Product | Founder Experience | 0-to-1 | EdTech SaaS | Education-Led Growth",
+        "recruiter": 4,
+        "gaps": [
+          "Удержание и когортный анализ",
+          "Масштаб до 10 партнёров-банков (в базе один брокер)",
+          "Команда из 6 с двумя PM (в базе команда 5)",
+          "A/B-тесты в продукте (только маркетинговый пример)"
+        ],
+        "note": "CV готово: изменение 20%, покрытие 81%, одна страница; пробелы по удержанию и масштабу партнёров."
+      },
+      "letter": {
+        "stamp": 5377964748606.769,
+        "file": "Cover Letter.md",
+        "mode": "generated",
+        "facts": {
+          "ok": 6,
+          "total": 6,
+          "pass": true,
+          "issues": []
+        },
+        "share": null,
+        "shareOk": null,
+        "humanize": 0,
+        "humanizeOk": true,
+        "words": 201,
+        "questions": [
+          "Фраза «I have not taken an academy to 10 partner banks, and I can't show retention figures» опирается на пробелы из match-report: подтверди, что она верна.",
+          "В вакансии банки, у тебя партнёр-брокер: в письме он назван brokerом, слово bank применено только к их задаче.",
+          "Подпись «Alex Morgan» взята из шапки CV."
+        ],
+        "removed": [
+          "размер команды (в CV 5, в карточке академии 3 — расхождение)",
+          "Studio One и A/B-тесты — не вошли ради длины"
+        ],
+        "note": "Письмо 201 слово: академия с активацией +31%, подписка, AI в контенте; пробелы (10 банков, удержание) названы честно."
+      },
+      "history": [
+        {
+          "at": "2026-10-22T07:42:04.289Z",
+          "from": "new",
+          "to": "ready",
+          "note": "письмо сгенерировано"
+        }
+      ],
+      "letterPdf": {
+        "pages": 1,
+        "stamp": 1792654915170.516
+      }
+    },
+    "Senior Product Manager, Mobile Payments - Orbit Pay": {
+      "status": "new",
+      "dictation": "",
+      "created": 1792653655879,
+      "fit": {
+        "total": 2,
+        "scores": {
+          "task_fit": 0,
+          "domain": 2,
+          "role_type": 0,
+          "logistics": 0
+        },
+        "bucket": "corpus",
+        "flags": [
+          "mobile_gap"
+        ],
+        "hard_filters": [
+          "онсайт вне целевых локаций без релокации (Berlin, Germany (onsite, 4 days a week))"
+        ],
+        "current_task": "Развивать платежи в нативных iOS/Android-приложениях: выпуск карт, 3DS, конверсия пополнений",
+        "why": "Задача — платежи и выпуск карт в нативном мобайле, образования и академии нет. Домен FinTech совпадает, но роль технико-платформенная, а нативный мобайл — слабое место кандидата. Офис в Берлине 4 дня в неделю вне целевых локаций, поддержка релокации не указана.",
+        "anchor_case": "Подходящей карточки нет: в базе нет опыта в платежах и нативном мобайле.",
+        "anchor_card": null,
+        "gaps": [
+          "5+ лет PM в нативных мобильных приложениях",
+          "Платежи: card schemes, issuing, PSD2, 3DS",
+          "Офис в Берлине 4 дня в неделю",
+          "Немецкий (плюс)"
+        ],
+        "title": "Senior Product Manager, Mobile Payments",
+        "company": "Orbit Pay",
+        "url": "",
+        "location": "Berlin, Germany (onsite, 4 days a week)",
+        "work_format": "onsite",
+        "seniority": "senior",
+        "domain": "FinTech / мобильный кошелёк для фрилансеров",
+        "salary": "",
+        "what_you_do": [
+          "Own the payments roadmap in the native apps",
+          "Work with engineering on card issuing, 3DS and payment flows",
+          "Drive conversion of in-app top-ups"
+        ],
+        "source": "manual",
+        "date_posted": ""
+      }
+    }
+  },
+  "inbox": {}
+}

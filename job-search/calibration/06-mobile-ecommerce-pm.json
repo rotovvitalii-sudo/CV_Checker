@@ -1,0 +1,16 @@
+{
+  "title": "Senior Product Manager, Mobile App", "company": "(типовой e-commerce)",
+  "url": "", "source": "calibration (негативный эталон, синтетический)",
+  "date_posted": "2026-09", "location": "Berlin, onsite", "work_format": "onsite",
+  "relocation_support": "no", "seniority": "senior", "role_family": "senior_pm",
+  "domain": "e-commerce", "business_model": "B2C", "platform": "mobile",
+  "company_stage": "scale-up",
+  "current_task": "Растить конверсию и ретеншен в нативном мобильном приложении маркетплейса",
+  "must_have_experience": ["native mobile product experience", "iOS/Android релизы", "e-commerce"],
+  "nice_to_have": ["German"],
+  "ai_requirement": "none", "languages_required": ["German", "English"], "salary": "",
+  "scores": {"task_fit": 0, "domain": 0, "role_type": 1, "logistics": 0},
+  "why": "Ни задачи, ни домена. Плюс нативный мобайл — прямое слабое место, онсайт в Берлине без релокации и немецкий.",
+  "anchor_case": "—", "gaps": ["нативный мобайл", "немецкий"],
+  "expected_min": 0, "expected_max": 4
+}
