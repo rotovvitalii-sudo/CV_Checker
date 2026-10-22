@@ -9,6 +9,7 @@ Every claim comes from a verified knowledge base of your own experience. The hum
 > Built by a product lead for a real job search and used daily on real applications.
 > This repository runs on a **fictional demo candidate (Alex Morgan)**. Real personal data lives in a separate private repo.
 > The UI, specs and agent instructions are in Russian; this README, the CVs and the letters are in English.
+> Screenshots show the demo candidate with on-screen text translated to English for this page.
 
 ## The problem
 
