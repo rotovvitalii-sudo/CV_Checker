@@ -15,24 +15,28 @@ const CORPUS = path.join(ROOT, 'job-search', 'corpus', 'jobs.jsonl');
 const PY = path.join(ROOT, '.venv', 'bin', 'python');
 
 const MANUAL_NO_TEXT = 'Текста вакансии нет';
-const STATUSES = ['new', 'ready', 'sent', 'replied', 'interview', 'offer', 'rejected', 'skip'];
+const STATUSES = ['new', 'ready', 'sent', 'replied', 'interview', 'offer', 'rejected', 'skip', 'no_reply'];
 const CHANNELS = ['site', 'board', 'email', 'linkedin', 'referral', 'recruiter', 'other'];
 
-// Фоллоу-ап: через FOLLOW_UP_DAYS после отправки (или прошлого фоллоу-апа), не больше MAX_FOLLOW_UPS
-const FOLLOW_UP_DAYS = 7;
-const MAX_FOLLOW_UPS = 2;
+// Без фоллоу-апов (решение 2026-10-26): отправленная заявка без ответа через NO_REPLY_DAYS сама уходит в архив
+// со статусом «Без ответа». Срок — knowledge-base/profile.json → no_reply_days (экран «Профиль»), по умолчанию 14.
+const NO_REPLY_DAYS = 14;
 const DAY = 24 * 60 * 60 * 1000;
 
-function followUpState(a, now = Date.now()) {
+function noReplyDays() {
+  try {
+    const n = Number(JSON.parse(fs.readFileSync(path.join(ROOT, 'knowledge-base', 'profile.json'), 'utf8')).no_reply_days);
+    return n >= 1 && n <= 90 ? n : NO_REPLY_DAYS;
+  } catch { return NO_REPLY_DAYS; }
+}
+
+// Сколько ждём ответа и когда заявка уйдёт в «Без ответа»
+function waitingState(a, now = Date.now(), days = noReplyDays()) {
   if (a.status !== 'sent' || !a.sent) return null;
-  const f = a.followUp || { count: 0, lastAt: null, snoozedUntil: null };
-  const from = Date.parse(f.lastAt || a.sent.at);
-  const dueAt = from + FOLLOW_UP_DAYS * DAY;
-  const snoozed = f.snoozedUntil && Date.parse(f.snoozedUntil) > now;
-  const daysSinceSent = Math.floor((now - Date.parse(a.sent.at)) / DAY);
-  let state = 'waiting';
-  if (!snoozed && now >= dueAt) state = f.count >= MAX_FOLLOW_UPS ? 'exhausted' : 'due';
-  return { ...f, dueAt: new Date(snoozed ? Date.parse(f.snoozedUntil) : dueAt).toISOString(), state, daysSinceSent };
+  const sentAt = Date.parse(a.sent.at);
+  const noReplyAt = sentAt + days * DAY;
+  return { daysSinceSent: Math.floor((now - sentAt) / DAY), noReplyAt: new Date(noReplyAt).toISOString(),
+    daysLeft: Math.max(0, Math.ceil((noReplyAt - now) / DAY)), days };
 }
 
 // Смена статуса всегда оставляет след в истории
@@ -351,7 +355,7 @@ function vacancyInfo(name) {
     created: a.created,
     sent: a.sent || null,
     history: a.history || [],
-    followUp: followUpState(a),
+    waiting: waitingState(a),
     exportRole: a.exportRole || '', exportCompany: a.exportCompany || '',
     foundOn: a.foundOn || null,
     submittedAnswers: a.submittedAnswers || [],
@@ -365,5 +369,5 @@ function vacancyInfo(name) {
 
 module.exports = {
   load, save, state, app, scan, vacancyInfo, cvMetrics, letterMetrics, safeName, outDir, pickFit,
-  exportNames, masterExportName, FUNNEL, STATUSES, CHANNELS, setStatus, FOLLOW_UP_DAYS, MAX_FOLLOW_UPS, DAY, DATA, VACANCIES, OUTPUT, get inbox() { return state.inbox; },
+  exportNames, masterExportName, FUNNEL, STATUSES, CHANNELS, setStatus, noReplyDays, DAY, DATA, VACANCIES, OUTPUT, get inbox() { return state.inbox; },
 };

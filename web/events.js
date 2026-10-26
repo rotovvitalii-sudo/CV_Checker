@@ -22,7 +22,7 @@ function persist() {
 }
 
 let lastId = 0;
-// type: job_done | job_error | strong_fit | follow_up | feed; link — маршрут приложения (#/v/…)
+// type: job_done | job_error | strong_fit | no_reply | feed …; link — маршрут приложения (#/v/…)
 function add({ type, title, text = '', link = '#/' }) {
   load();
   const id = Math.max(Date.now(), lastId + 1);

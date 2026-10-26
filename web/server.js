@@ -174,7 +174,6 @@ app.post('/api/vacancies/:name/sent', wrap(async (req, res) => {
     package: info.hasCV,
     checklist: { cv: !!checklist.cv, letter: !!checklist.letter, skipped: !!checklist.skipped },
   };
-  a.followUp = { count: 0, lastAt: null, snoozedUntil: null, log: [] };
   store.setStatus(a, 'sent', { at, note: `канал: ${channel}` });
   a.updated = Date.now();
   store.save();
@@ -208,7 +207,6 @@ app.post('/api/vacancies/manual', wrap(async (req, res) => {
   const a = store.app(name);
   a.sent = { at, channel, target: url, note: String(req.body.note || '').trim(), cvBaseVersion: master.activeVersion(),
     letterFile: null, letterMode: 'none', package: false, checklist: { cv: false, letter: false, skipped: true }, manual: true };
-  a.followUp = { count: 0, lastAt: null, snoozedUntil: null, log: [] };
   const found = foundOnOf(req.body.foundOn);
   if (found) a.foundOn = found;
   store.setStatus(a, 'sent', { at, note: `вне приложения, канал: ${channel}` });
@@ -267,31 +265,7 @@ app.delete('/api/vacancies/:name/sent', wrap(async (req, res) => {
   if (a.status !== 'sent' || !a.sent) return res.status(400).json({ error: 'заявка не в статусе «Отправлено»' });
   const info = store.vacancyInfo(name);
   delete a.sent;
-  delete a.followUp;
   store.setStatus(a, info.hasCV && info.letterFile ? 'ready' : 'new', { note: 'отправка отменена' });
-  store.save();
-  res.json({ ok: true });
-}));
-
-app.post('/api/vacancies/:name/follow-up', wrap(async (req, res) => {
-  const name = store.safeName(req.params.name);
-  const a = store.app(name);
-  if (a.status !== 'sent' || !a.sent) return res.status(400).json({ error: 'фоллоу-ап только для отправленных' });
-  const f = a.followUp || (a.followUp = { count: 0, lastAt: null, snoozedUntil: null, log: [] });
-  f.log = f.log || [];
-  if (req.body.action === 'done') {
-    if (f.count >= store.MAX_FOLLOW_UPS) return res.status(400).json({ error: `не больше ${store.MAX_FOLLOW_UPS} фоллоу-апов` });
-    let at;
-    try { at = isoDate(req.body.at); } catch { return res.status(400).json({ error: 'неверная дата' }); }
-    f.count += 1;
-    f.lastAt = at;
-    f.snoozedUntil = null;
-    f.log.push({ at, action: 'done', note: String(req.body.note || '').trim() });
-  } else if (req.body.action === 'snooze') {
-    const days = Math.min(30, Math.max(1, Number(req.body.days) || 3));
-    f.snoozedUntil = new Date(Date.now() + days * store.DAY).toISOString();
-    f.log.push({ at: new Date().toISOString(), action: 'snooze', days });
-  } else return res.status(400).json({ error: 'action: done | snooze' });
   store.save();
   res.json({ ok: true });
 }));
@@ -1832,6 +1806,11 @@ app.put('/api/profile', wrap(async (req, res) => {
     if (!['no', 'with_support', 'any'].includes(b.relocation)) return res.status(400).json({ error: 'relocation: no | with_support | any' });
     next.relocation = b.relocation;
   }
+  if (b.no_reply_days !== undefined) {
+    const n = Number(b.no_reply_days);
+    if (!(n >= 1 && n <= 90)) return res.status(400).json({ error: '«Без ответа через» — от 1 до 90 дней' });
+    next.no_reply_days = Math.round(n);
+  }
   if (b.min_salary !== undefined) {
     const amount = b.min_salary.amount === '' || b.min_salary.amount == null ? null : Number(b.min_salary.amount);
     if (amount != null && !(amount >= 0)) return res.status(400).json({ error: 'зарплата — число' });
@@ -1929,27 +1908,28 @@ app.post('/api/events/read', wrap(async (req, res) => {
   res.json({ marked: events.markRead({ ids: req.body.ids, all: !!req.body.all }) });
 }));
 
-// Фоллоу-ап: одно уведомление на каждое «пора напомнить» (раз в 10 минут проверяем все заявки)
-function checkFollowUps() {
-  let changed = false;
+// Без ответа: отправленная заявка, на которую не ответили за no_reply_days, сама уходит в архив («Без ответа»).
+// Раз в 10 минут; одно уведомление на пачку. Ответили позже — статус меняется вручную, как обычно.
+function moveNoReply() {
+  const days = store.noReplyDays();
+  const moved = [];
   for (const name of store.scan()) {
-    const info = store.vacancyInfo(name);
-    const f = info.followUp;
-    if (!f || !['due', 'exhausted'].includes(f.state)) continue;
     const a = store.app(name);
-    const key = `${f.state}:${f.dueAt}`;
-    if (a.followUpNotified === key) continue;
-    a.followUpNotified = key;
-    changed = true;
-    events.add({
-      type: 'follow_up', title: f.state === 'due' ? 'Пора фоллоу-ап' : 'Два фоллоу-апа без ответа',
-      text: `${info.role} — ${info.company} · отправлено ${f.daysSinceSent} дн. назад`, link: `#/v/${encodeURIComponent(name)}`,
-    });
+    if (a.status !== 'sent' || !a.sent) continue;
+    if (Date.now() - Date.parse(a.sent.at) < days * store.DAY) continue;
+    store.setStatus(a, 'no_reply', { note: `нет ответа ${days} дн. — перенесено автоматически` });
+    moved.push(name);
   }
-  if (changed) store.save();
+  if (!moved.length) return;
+  store.save();
+  events.add({
+    type: 'no_reply', title: moved.length === 1 ? 'Заявка ушла в «Без ответа»' : `${moved.length} заявки(ок) ушли в «Без ответа»`,
+    text: `${moved.slice(0, 3).join('; ')}${moved.length > 3 ? '…' : ''} · ${days} дн. без ответа`,
+    link: moved.length === 1 ? `#/v/${encodeURIComponent(moved[0])}` : '#/',
+  });
 }
-setTimeout(checkFollowUps, 5000);
-setInterval(checkFollowUps, 10 * 60 * 1000);
+setTimeout(moveNoReply, 5000);
+setInterval(moveNoReply, 10 * 60 * 1000);
 
 // ---------- статус и расход агента (S5) ----------
 

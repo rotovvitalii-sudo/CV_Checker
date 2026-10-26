@@ -1,7 +1,7 @@
 // CV Checker Web — фронтенд без сборки.
 const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
-  rejected: 'Отказ', skip: 'Не подаюсь',
+  rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
 const STEP_LABELS = { fit: 'оценка фита', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
@@ -109,20 +109,11 @@ async function loadList() {
 const ACTIVE = ['new', 'ready'];
 const SENT = ['sent', 'replied', 'interview', 'offer'];
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ARCHIVE = ['rejected', 'skip'];
+const ARCHIVE = ['rejected', 'skip', 'no_reply'];
 const FIT_THRESHOLD = 7;
 
 // Где заявка сейчас и что с ней делать — выводится из того, что уже есть в данных
 function stageOf(i) {
-  if (i.followUp && ['due', 'exhausted'].includes(i.followUp.state)) {
-    const f = i.followUp;
-    const via = CHANNEL_LABELS[i.sent.channel] || i.sent.channel;
-    return f.state === 'due'
-      ? { key: 'followup', chip: 'Фоллоу-ап', tone: 'warn', table: 'Пора фоллоу-ап', done: 4,
-        text: `Отправлено ${fmtDay(i.sent.at)} через ${via}, ответа нет ${daysWord(f.daysSinceSent)}. Напомни о себе.`, action: 'followup' }
-      : { key: 'followup', chip: 'Тишина', tone: 'warn', table: 'Без ответа', done: 4,
-        text: `${f.count} ${plural(f.count, ['фоллоу-ап', 'фоллоу-апа', 'фоллоу-апов'])} без ответа. Убрать в архив?`, action: 'exhausted' };
-  }
   if (i.status === 'sent' && i.sent) {
     return { key: 'sent', chip: 'Отправлено', tone: 'info', table: `Отправлено · ${fmtDay(i.sent.at)}`, done: 4, text: '', action: 'open' };
   }
@@ -159,7 +150,7 @@ function stageOf(i) {
     action: 'tailor' };
 }
 
-const STAGE_ORDER = { followup: 0, ready: 1, you: 2, decide: 3, error: 4, agent: 5, new: 6, sent: 7 };
+const STAGE_ORDER = { ready: 1, you: 2, decide: 3, error: 4, agent: 5, new: 6, sent: 7 };
 const plural = (n, f) => f[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
 const mono = (v, cls = '') => `<strong class="mono ${cls}">${v}</strong>`;
 const ICON = {
@@ -175,17 +166,15 @@ function renderHome() {
   const ready = active.filter((i) => stages.get(i.name).key === 'ready').length;
   const waiting = active.filter((i) => ['you', 'decide'].includes(stages.get(i.name).key)).length;
   const pending = inbox.filter((it) => it.state !== 'done');
-  const followUps = items.filter((i) => stages.get(i.name).key === 'followup');
 
   const sub = [
     `${active.length} в работе`,
     ready ? `${ready} ${plural(ready, ['готова', 'готовы', 'готовы'])} к отправке` : '',
     waiting ? `${waiting} ${plural(waiting, ['ждёт', 'ждут', 'ждут'])} твоего решения` : '',
-    followUps.length ? `${followUps.length} ${plural(followUps.length, ['ждёт', 'ждут', 'ждут'])} фоллоу-апа` : '',
     pending.length ? `${pending.length} ${plural(pending.length, ['новая оценивается', 'новых оцениваются', 'новых оцениваются'])}` : '',
   ].filter(Boolean).join(' · ');
 
-  const cards = active.concat(followUps).sort((a, b) => STAGE_ORDER[stages.get(a.name).key] - STAGE_ORDER[stages.get(b.name).key]
+  const cards = active.slice().sort((a, b) => STAGE_ORDER[stages.get(a.name).key] - STAGE_ORDER[stages.get(b.name).key]
     || (b.fit?.total ?? -1) - (a.fit?.total ?? -1));
 
   $('#homeView').innerHTML = `<div class="page-wrap">
@@ -254,16 +243,9 @@ function nextCard(i, st) {
     i.submittedAnswers?.length ? `<span>Ответы ${mono(i.submittedAnswers.length)}</span>` : '',
   ].join('');
   const n = esc(i.name);
-  const fuMetrics = st.key === 'followup'
-    ? `<span>Отправлено ${mono(fmtDay(i.sent.at))}</span><span>Фоллоу-апов ${mono(`${i.followUp.count}/2`)}</span>${i.submittedAnswers?.length ? `<span>Ответы ${mono(i.submittedAnswers.length)}</span>` : ''}${i.sent.target ? `<span class="ellipsis">${esc(i.sent.target)}</span>` : ''}` : null;
   const actions = {
     send: `<div class="stack-btns"><button type="button" class="btn primary block" data-open="${n}">Проверить и отправить</button>
       <button type="button" class="btn ghost block" data-send="${n}">Уже отправил — отметить</button></div>`,
-    followup: `<div class="two"><button type="button" class="btn primary" data-fu-done="${n}">Фоллоу-ап отправлен</button>
-      <button type="button" class="btn ghost" data-fu-snooze="${n}" data-days="3">Через 3 дня</button></div>
-      <button type="button" class="link-btn" data-open="${n}">Ответили? Открыть заявку →</button>`,
-    exhausted: `<div class="two"><button type="button" class="btn ghost" data-outcome-home="${n}">В архив</button>
-      <button type="button" class="btn ghost" data-fu-snooze="${n}" data-days="7">Ждать ещё неделю</button></div>`,
     letter: `<button type="button" class="btn primary block" data-open="${n}" data-focus="letter">${ICON.mic}Надиктовать письмо</button>`,
     decide: `<div class="two"><button type="button" class="btn ghost" data-open="${n}">Открыть</button>
       <button type="button" class="btn ghost muted-btn" data-archive="${n}">В архив</button></div>`,
@@ -278,7 +260,7 @@ function nextCard(i, st) {
     </div>
     ${progress(st)}
     <p class="ncard-text">${esc(st.text)}</p>
-    <div class="metrics">${fuMetrics ?? metrics}</div>
+    <div class="metrics">${metrics}</div>
     <div class="ncard-foot">${actions}</div>
   </article>`;
 }
@@ -375,9 +357,6 @@ function bindHome() {
   root.querySelectorAll('.ncard[data-card]').forEach((c) => makeCardClickable(c, c.dataset.card));
   const byName = (n) => items.find((i) => i.name === n);
   root.querySelectorAll('[data-send]').forEach((b) => b.addEventListener('click', () => openSentDialog(byName(b.dataset.send))));
-  root.querySelectorAll('[data-fu-done]').forEach((b) => b.addEventListener('click', () => { b.disabled = true; followUpAction(b.dataset.fuDone, 'done'); }));
-  root.querySelectorAll('[data-fu-snooze]').forEach((b) => b.addEventListener('click', () => { b.disabled = true; followUpAction(b.dataset.fuSnooze, 'snooze', b.dataset.days); }));
-  root.querySelectorAll('[data-outcome-home]').forEach((b) => b.addEventListener('click', () => { b.disabled = true; setOutcome(b.dataset.outcomeHome, 'rejected'); }));
   root.querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
     homeView = b.dataset.hview;
     try { localStorage.setItem('cvc-home-view', homeView); } catch {}
@@ -1063,11 +1042,6 @@ function refreshAfterSend() {
   loadList();
 }
 
-async function followUpAction(name, action, days) {
-  await api(`/api/vacancies/${enc(name)}/follow-up`, { method: 'POST', body: { action, days } });
-  refreshAfterSend();
-}
-
 async function setOutcome(name, status, at) {
   await api(`/api/vacancies/${enc(name)}`, { method: 'PATCH', body: { status, at } });
   refreshAfterSend();
@@ -1499,32 +1473,18 @@ function sendBlock(d) {
     return `<div class="card send-card">
       <div class="send-row">
         <div><h2 style="margin:0 0 4px">Отправка</h2>
-          <p class="muted" style="margin:0">${ready ? 'Пакет готов. Отправь его сам на сайте или по почте и отметь здесь — приложение напомнит о фоллоу-апе через неделю.'
+          <p class="muted" style="margin:0">${ready ? 'Пакет готов. Отправь его сам на сайте или по почте и отметь здесь. Если не ответят — заявка сама уйдёт в архив «Без ответа».'
             : 'Отметь, когда подашься. Можно и без пакета — например, через Easy Apply с базовым CV.'}</p></div>
         <button type="button" class="btn ${ready ? 'primary' : 'ghost'}" id="markSent">Отметить отправленным</button>
       </div></div>`;
   }
   const s = d.sent;
-  const f = d.followUp;
   const where = [CHANNEL_LABELS[s.channel] || s.channel, s.target].filter(Boolean).map(esc).join(' · ');
-  let fu = '';
-  if (f) {
-    if (f.state === 'due') {
-      fu = `<div class="banner warn fu"><p>Прошло ${daysWord(f.daysSinceSent)} без ответа — пора напомнить о себе${f.count ? ` (это будет ${f.count + 1}-й фоллоу-ап)` : ''}.</p>
-        <div class="two"><button type="button" class="btn primary" data-fu="done">Фоллоу-ап отправлен</button>
-        <button type="button" class="btn ghost" data-fu="snooze" data-days="3">Отложить на 3 дня</button></div></div>`;
-    } else if (f.state === 'exhausted') {
-      fu = `<div class="banner warn fu"><p>${f.count} ${plural(f.count, ['фоллоу-ап', 'фоллоу-апа', 'фоллоу-апов'])} без ответа. Скорее всего, тишина — убрать в архив?</p>
-        <div class="two"><button type="button" class="btn ghost" data-outcome="rejected">В архив (отказ)</button>
-        <button type="button" class="btn ghost" data-fu="snooze" data-days="7">Подождать ещё неделю</button></div></div>`;
-    } else {
-      // Календарные дни: отправил сегодня — фоллоу-ап «через 7 дней», а не «через 8»
-      const dayStart = (t) => new Date(new Date(t).toDateString()).getTime();
-      const left = Math.max(0, Math.round((dayStart(Date.parse(f.dueAt)) - dayStart(Date.now())) / DAY_MS));
-      fu = `<p class="muted" style="margin:0">Фоллоу-ап — ${fmtDay(f.dueAt)}${left ? ` (через ${daysWord(left)})` : ''} · отправлено фоллоу-апов: ${f.count}</p>`;
-    }
-  }
-  const outcomes = d.status === 'sent' || d.status === 'replied' || d.status === 'interview'
+  // Без фоллоу-апов: через N дней тишины заявка сама уйдёт в архив «Без ответа»
+  const w = d.waiting;
+  const fu = w ? `<p class="muted" style="margin:0">Ждём ответа ${daysWord(w.daysSinceSent)} · без ответа уйдёт в архив ${fmtDay(w.noReplyAt)}${w.daysLeft ? ` (через ${daysWord(w.daysLeft)})` : ''}</p>`
+    : d.status === 'no_reply' ? '<p class="muted" style="margin:0">Ответа не было — заявка в архиве. Ответили позже? Выбери статус ниже.</p>' : '';
+  const outcomes = ['sent', 'replied', 'interview', 'no_reply'].includes(d.status)
     ? `<div class="outcomes"><span class="muted">Что дальше:</span>
         ${OUTCOMES.filter(([k]) => k !== d.status).map(([k, l]) => `<button type="button" class="btn ghost small-btn" data-outcome="${k}">${l}</button>`).join('')}
         <label class="sr-only" for="outcomeDate">Дата</label><input type="date" id="outcomeDate" value="${todayInput()}" class="date-in">
@@ -1551,12 +1511,11 @@ function bindSendBlock(d) {
     try { await api(`/api/vacancies/${enc(d.name)}/sent`, { method: 'DELETE' }); } catch (e) { alert(e.message); }
     refreshAfterSend();
   });
-  document.querySelectorAll('#detail [data-fu]').forEach((b) => b.addEventListener('click', () => followUpAction(d.name, b.dataset.fu, b.dataset.days)));
   document.querySelectorAll('#detail [data-outcome]').forEach((b) => b.addEventListener('click', () => setOutcome(d.name, b.dataset.outcome, $('#outcomeDate')?.value)));
 }
 
 function statusTone(st) {
-  return { sent: 'info', replied: 'info', interview: 'good', offer: 'good', rejected: 'bad', skip: 'neutral' }[st] || 'neutral';
+  return { sent: 'info', replied: 'info', interview: 'good', offer: 'good', rejected: 'bad', skip: 'neutral', no_reply: 'neutral' }[st] || 'neutral';
 }
 
 // ---------- разбор вакансии «коротко» (M2, docs/specs/02-vacancy-brief.md) ----------
@@ -2176,7 +2135,7 @@ const BOARD_COLS = [
   ['interview', 'Интервью', ['interview']],
   ['offer', 'Оффер', ['offer']],
 ];
-const MOVE_LABELS = { prep: 'Готовится', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер', rejected: 'Отказ', skip: 'Не подаюсь' };
+const MOVE_LABELS = { prep: 'Готовится', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер', rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа' };
 let homeView = 'table';
 try { homeView = localStorage.getItem('cvc-home-view') || 'table'; } catch {}
 
@@ -2191,7 +2150,7 @@ function daysOnStage(i) {
 }
 
 // S2 P1 · «застряла»: дольше порога на стадии — пора напомнить, подать или убрать в архив
-const STUCK_DAYS = { prep: 5, sent: 7, replied: 7, interview: 7, offer: 5 };
+const STUCK_DAYS = { prep: 5, replied: 7, interview: 7, offer: 5 }; // «Отправлено» не застревает — само уходит в «Без ответа»
 const STUCK_HINTS = { prep: 'подай или убери в «Не подаюсь»', sent: 'напомни или убери в архив', replied: 'спроси о следующем шаге',
   interview: 'спроси о решении', offer: 'ответь на оффер' };
 let boardStuck = false;
@@ -2214,9 +2173,8 @@ function boardCard(i, st) {
   if (i.submittedAnswers?.length) meta.push(`<span class="muted small">${esc(answersCount(i))}</span>`);
   if (i.salaryMismatch) meta.push(i.salaryMismatch.kind === 'check' ? `<span class="muted small" title="${esc(salaryWarn(i))}">вилка: проверь</span>`
     : `<span class="pill warn" title="${esc(salaryWarn(i))}">вилка ≠ якорь</span>`);
-  if (i.status === 'sent' && i.followUp) {
-    if (['due', 'exhausted'].includes(i.followUp.state)) meta.push(`<span class="pill warn">${i.followUp.state === 'due' ? 'пора фоллоу-ап' : 'тишина'}</span>`);
-    else if (i.followUp.daysSinceSent >= 1) meta.push(`<span class="muted small">ждёт ответа ${daysWord(i.followUp.daysSinceSent)}</span>`);
+  if (i.status === 'sent' && i.waiting?.daysSinceSent >= 1) {
+    meta.push(`<span class="muted small" title="без ответа уйдёт в архив ${fmtDay(i.waiting.noReplyAt)}">ждёт ответа ${daysWord(i.waiting.daysSinceSent)}</span>`);
   }
   const targets = Object.keys(MOVE_LABELS).filter((k) => k !== col);
   return `<article class="bcard" draggable="true" data-name="${esc(i.name)}">
@@ -2242,7 +2200,7 @@ function boardView(stages) {
   const vis = boardStuck ? all.filter(isStuck) : all;
   const toolbar = `<div class="row board-tools"><button type="button" class="small ${boardStuck ? 'primary' : ''}" id="boardStuck" aria-pressed="${boardStuck}">
       Только застрявшие · ${stuckN}</button>
-    <span class="muted small">Порог: подготовка и оффер — 5 дней, остальные стадии — 7 дней.</span></div>`;
+    <span class="muted small">Порог: подготовка и оффер — 5 дней, «Ответили» и «Интервью» — 7. «Отправлено» без ответа само уходит в архив.</span></div>`;
   const cols = BOARD_COLS.map(([k, label, st]) => {
     const list = vis.filter((i) => st.includes(i.status))
       .sort((a, b) => (daysOnStage(b) ?? 0) - (daysOnStage(a) ?? 0));
@@ -2260,6 +2218,7 @@ function boardView(stages) {
       <div class="archive-drops">
         <div class="adrop" data-drop="rejected">Отказ</div>
         <div class="adrop" data-drop="skip">Не подаюсь</div>
+        <div class="adrop" data-drop="no_reply">Без ответа</div>
       </div>
       ${archived.length ? `<div class="board-arch">${archived.map((i) => boardCard(i, stages.get(i.name))).join('')}</div>` : ''}
     </details>`;
@@ -3457,6 +3416,9 @@ function renderProfile(pr, answers, canRevert, cal) {
         <div><input id="pfLang" value="${esc(pr.languages.join(', '))}"><p class="hint">Вакансия с требованием другого языка отсеивается. Полное название и код: polish, pl.</p></div>
         <span class="lbl">Исключить уровни</span>
         <div class="checks">${SEN_LEVELS.map((s) => check('seniority_exclude', s, pr.seniority_exclude.includes(s), s)).join('')}</div>
+        <label for="pfNoReply">Без ответа через</label>
+        <div class="row"><input id="pfNoReply" type="number" min="1" max="90" step="1" style="width:90px" value="${pr.no_reply_days ?? 14}">
+          <span class="hint" style="margin:0">дней после отправки заявка без ответа сама уходит в архив «Без ответа»</span></div>
         <label for="pfSal">Минимальная зарплата</label>
         <div class="row"><input id="pfSal" type="number" min="0" step="any" style="width:160px" value="${ms.amount ?? ''}" placeholder="не задана">
           <select id="pfCur" style="width:auto">${['EUR', 'PLN', 'USD', 'GBP'].map((c) => `<option ${ms.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
@@ -3536,6 +3498,7 @@ function bindProfile(answers) {
       relocation: form.querySelector('input[name="relocation"]:checked')?.value,
       onsite_locations: listOf($('#pfLoc').value), languages: listOf($('#pfLang').value),
       min_salary: { amount: $('#pfSal').value, currency: $('#pfCur').value, period: $('#pfPer').value },
+      no_reply_days: $('#pfNoReply').value,
     };
     $('#pfSave').disabled = true;
     $('#pfSave').textContent = 'Проверяю калибровку…';
@@ -3737,7 +3700,7 @@ function renderWeek(w) {
 // Колокольчик опрашивает сервер раз в 15 с. Системное уведомление — только если вкладка в фоне,
 // браузер разрешил и ты включил их кнопкой (разрешение не запрашиваем при загрузке).
 
-const EVENT_ICONS = { job_done: '✓', job_error: '!', strong_fit: '★', follow_up: '↻', feed: '+', week: '▦', budget: '$' };
+const EVENT_ICONS = { job_done: '✓', job_error: '!', strong_fit: '★', follow_up: '↻', no_reply: '⌛', feed: '+', week: '▦', budget: '$' };
 let bell = { events: [], unread: 0, lastId: 0, primed: false };
 const notifyOn = () => { try { return localStorage.getItem('cvc-notify') === 'on'; } catch { return false; } };
 const canNotify = () => typeof Notification !== 'undefined';
@@ -3776,7 +3739,7 @@ function renderBellPanel() {
         <span class="bp-ic ${e.type}" aria-hidden="true">${EVENT_ICONS[e.type] || '•'}</span>
         <span class="bp-body"><span class="bp-title">${esc(e.title)}</span>${e.text ? `<span class="bp-text">${esc(e.text)}</span>` : ''}
           <span class="bp-time">${new Date(e.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span></a>`).join('')
-      : '<p class="muted small" style="margin:12px">Пока пусто. Здесь появятся завершённые задачи агента, сильные фиты и фоллоу-апы.</p>'}</div>
+      : '<p class="muted small" style="margin:12px">Пока пусто. Здесь появятся завершённые задачи агента, сильные фиты и заявки, ушедшие в «Без ответа».</p>'}</div>
     <div class="bp-foot">${notifyCtl}</div>`;
   $('#readAll')?.addEventListener('click', () => markEventsRead(null, true));
   $('#notifyOn')?.addEventListener('click', async () => {
