@@ -1,0 +1,112 @@
+[
+ {
+  "location": "Remote - USA",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "Menlo Park, CA; New York, NY",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "United States",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "US-REMOTE, Remote",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "New York, NY (Hybrid) or Remote USA",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "United States (East Coast Time Zone) - Remote",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "Crystal City",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "Lake Mary, FL; New York, NY",
+  "description": "",
+  "expect": true
+ },
+ {
+  "location": "Remote",
+  "description": "You must be authorized to work in the United States.",
+  "expect": true
+ },
+ {
+  "location": "Remote",
+  "description": "Open to US residents only.",
+  "expect": true
+ },
+ {
+  "location": "Remote - Global, Remote",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "Remote - Americas",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "San Francisco; Malta; Singapore",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "New York or London",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "US or EU (Remote)",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "Afghanistan, Albania, United States, Zambia",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "KW, Toronto, Winnipeg, Vancouver, or Remote Canada",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "Remote",
+  "description": "We hire across the US and Europe; US citizens welcome too.",
+  "expect": false
+ },
+ {
+  "location": "London",
+  "description": "You must be authorized to work in the United States.",
+  "expect": false
+ },
+ {
+  "location": "Warsaw, Poland",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "Remote",
+  "description": "",
+  "expect": false
+ },
+ {
+  "location": "Lake Mary, FL; London, UK",
+  "description": "",
+  "expect": false
+ }
+]

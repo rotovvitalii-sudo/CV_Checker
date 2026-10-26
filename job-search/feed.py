@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from classify import classify  # noqa: E402
+from classify import classify, us_only  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "job-search" / "raw"
@@ -31,6 +31,15 @@ APPS = ROOT / "web" / "data" / "applications.json"
 SKIPPED = ROOT / "web" / "data" / "feed-skipped.json"
 EXCERPT = 400
 SECTORS = ("edtech", "fintech")  # порядок = приоритет при дублях
+PROFILE = ROOT / "knowledge-base" / "profile.json"
+
+
+def exclude_us_only():
+    """Профиль поиска → exclude_us_only (по умолчанию да): вакансии только для США в ленту не попадают."""
+    try:
+        return json.loads(PROFILE.read_text()).get("exclude_us_only", True) is not False
+    except (OSError, json.JSONDecodeError):
+        return True
 
 
 def key_of(j):
@@ -148,19 +157,29 @@ def build():
     write_signals(jobs, signal_cos)
     saved, skip = saved_urls(), skipped()
     items = []
+    hide_us = exclude_us_only()
+    hidden_us = []
     for key, j in jobs.items():
         if key in skip or norm_url(j.get("url")) in saved:
             continue
         c = classify(j)
         if j.get("source") in SECTORS:
-            items.append(card(key, j, c, j["source"]))  # роль уже отобрана edtech.py по заголовку
-            if j.get("source") == "fintech" and j.get("company") in signal_cos and j.get("role_group") == "edu":
-                items[-1]["academy_signal"] = True
-            continue
-        if c["bucket"] in ("A", "B"):
-            items.append(card(key, j, c, "fit"))
+            section = j["source"]  # роль уже отобрана edtech.py по заголовку
+        elif c["bucket"] in ("A", "B"):
+            section = "fit"
         elif c["role_product"] and not c["role_teaching"]:
-            items.append(card(key, j, c, "product"))
+            section = "product"
+        else:
+            continue
+        # Только США (переезд или резидентство) — не показываем; считаем, чтобы лента сказала, сколько скрыто
+        why_us = us_only(j) if hide_us else None
+        if why_us:
+            hidden_us.append({"title": j.get("title", ""), "company": j.get("company", ""), "location": j.get("location", ""),
+                              "section": section, "why": why_us})
+            continue
+        items.append(card(key, j, c, section))
+        if section == "fintech" and j.get("company") in signal_cos and j.get("role_group") == "edu":
+            items[-1]["academy_signal"] = True
     pair = lambda x: (re.sub(r"[^a-z0-9]+", "", x["company"].lower()), re.sub(r"[^a-z0-9]+", "", x["title"].lower()))
     # Одна вакансия в нескольких разделах — оставляем одну копию по приоритету EdTech → FinTech → доски
     rank = {s: i for i, s in enumerate(SECTORS)}
@@ -176,6 +195,7 @@ def build():
         "sources": sources,
         "total": len(jobs),
         "items": items,
+        "hidden_us": hidden_us,
         "skipped": [{"key": k, **v} for k, v in sorted(skip.items(), key=lambda kv: kv[1].get("at", ""), reverse=True)],
     }
 

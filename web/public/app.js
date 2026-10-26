@@ -1959,7 +1959,10 @@ function renderFeed() {
   $('#feedView').innerHTML = `<div class="page-wrap">
     <section class="home-head">
       <div><h1>Лента вакансий</h1>
-        <p class="lead">${names || 'Источники'} · ${d.total} в сырье${last ? ` · обновлено ${ago(last)}` : ''}</p></div>
+        <p class="lead">${names || 'Источники'} · ${d.total} в сырье${last ? ` · обновлено ${ago(last)}` : ''}</p>
+        ${d.hidden_us?.length ? `<details class="hidden-us"><summary class="muted small">Скрыто ${d.hidden_us.length} ${plural(d.hidden_us.length, ['вакансия', 'вакансии', 'вакансий'])} только для США — переезд или резидентство</summary>
+          <ul class="tight small">${d.hidden_us.slice(0, 60).map((h) => `<li>${esc(h.title)} — ${esc(h.company)} <span class="muted">· ${esc(h.location || h.why)}</span></li>`).join('')}</ul>
+          <p class="muted small" style="margin:4px 0 0">Отключить фильтр — <a href="#/profile">Профиль</a> → «Вакансии только для США».</p></details>` : ''}</div>
       <div class="feed-refresh">
         <button type="button" class="btn dark" id="feedRefresh">Обновить ленту</button>
         <p class="muted small" style="margin:6px 0 0">Только открытые API. LinkedIn и сайты с логином — вручную.</p>
@@ -3416,6 +3419,9 @@ function renderProfile(pr, answers, canRevert, cal) {
         <div><input id="pfLang" value="${esc(pr.languages.join(', '))}"><p class="hint">Вакансия с требованием другого языка отсеивается. Полное название и код: polish, pl.</p></div>
         <span class="lbl">Исключить уровни</span>
         <div class="checks">${SEN_LEVELS.map((s) => check('seniority_exclude', s, pr.seniority_exclude.includes(s), s)).join('')}</div>
+        <span class="lbl">Вакансии только для США</span>
+        <div class="checks"><label class="ck"><input type="checkbox" id="pfNoUS" ${pr.exclude_us_only !== false ? 'checked' : ''}> скрывать в ленте</label>
+          <span class="hint" style="margin:0">все локации в США или требуется право работать / жить в США</span></div>
         <label for="pfNoReply">Без ответа через</label>
         <div class="row"><input id="pfNoReply" type="number" min="1" max="90" step="1" style="width:90px" value="${pr.no_reply_days ?? 14}">
           <span class="hint" style="margin:0">дней после отправки заявка без ответа сама уходит в архив «Без ответа»</span></div>
@@ -3498,7 +3504,7 @@ function bindProfile(answers) {
       relocation: form.querySelector('input[name="relocation"]:checked')?.value,
       onsite_locations: listOf($('#pfLoc').value), languages: listOf($('#pfLang').value),
       min_salary: { amount: $('#pfSal').value, currency: $('#pfCur').value, period: $('#pfPer').value },
-      no_reply_days: $('#pfNoReply').value,
+      no_reply_days: $('#pfNoReply').value, exclude_us_only: $('#pfNoUS').checked,
     };
     $('#pfSave').disabled = true;
     $('#pfSave').textContent = 'Проверяю калибровку…';

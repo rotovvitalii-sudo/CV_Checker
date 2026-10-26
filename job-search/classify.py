@@ -141,6 +141,61 @@ def fintech_role(title):
     return edtech_role(title)
 
 
+# ─── Только США: переезд в Штаты или резидентство как условие работы (2026-10-26) ──
+# Вакансия отсеивается, если ВСЕ её локации в США, или в тексте прямо требуется право работать / жить в США,
+# а других (не американских) локаций нет. «Remote - Global», «London; New York», «Americas» — остаются.
+US_STATES = ("alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|"
+             "illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|"
+             "mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|"
+             "north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|"
+             "south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming")
+US_CODES = ("AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|"
+            "NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC")
+US_CITIES = ("new york|nyc|san francisco|sf bay|bay area|menlo park|palo alto|mountain view|san jose|los angeles|"
+             "seattle|chicago|boston|austin|denver|atlanta|miami|dallas|houston|philadelphia|crystal city|"
+             "washington,? d\.?c|silicon valley|brooklyn|santa monica|salt lake city|portland|raleigh|nashville|"
+             "east coast|west coast|pacific time|eastern time")
+US_LOC = re.compile(rf"\b(united states|usa|u\.s\.a?\.?|us|{US_STATES}|{US_CITIES})\b|^\s*({US_CODES})\b", re.I)
+US_TAIL = re.compile(rf"(united states( of america)?|usa|u\.s\.a?\.?|us|{US_STATES}|{US_CODES})", re.I)
+GENERIC_LOC = re.compile(r"\b(remote|hybrid|on-?site|office|headquarters|hq|anywhere|full[- ]time|time zone|"
+                         r"zone|only|based|roles?|or|and|in)\b|[-–—()/|:.]", re.I)
+US_WORK_REQ = re.compile(
+    r"(authori[sz]ed to work in the (united states|u\.?s\.?a?)\b|(requires?|required|must have) (united states|u\.?s\.?) work authori[sz]ation|"
+    r"(united states|u\.?s\.?) work authori[sz]ation (is )?required|must be a (united states|u\.?s\.?) citizen|"
+    r"(united states|u\.?s\.?) citizenship (is )?required|(united states|u\.?s\.?) (persons?|residents?) only|(must|need to|required to|should) (be )?(reside|live|located|based) in the (united states|u\.?s\.?)|"
+    r"(reside|resident|located|based) in the (united states|u\.?s\.?)( only)?\b.{0,40}(required|only|must)|"
+    r"(must|need to) (relocate|move) to the (united states|u\.?s\.?)|open to (candidates|applicants) (located|based) in the u\.?s)",
+    re.I)
+
+
+def us_only(job):
+    """Причина («все локации в США» / «требуется право работать в США») или None."""
+    # Локации через «;» и «|». «Lake Mary, FL», «Austin, Texas», «…, United States» — место в США целиком (последняя часть —
+    # штат или страна). Иначе делим по запятой: «Toronto, Winnipeg» и длинный список стран — не только США
+    us = non_us = 0
+    parts = []
+    for seg in [x.strip() for x in re.split(r";|\s\|\s", job.get("location", "") or "") if x.strip()]:
+        tail = seg.rsplit(",", 1)[-1].strip() if "," in seg else ""
+        if tail and US_TAIL.fullmatch(GENERIC_LOC.sub(" ", tail).strip()):
+            us += 1
+        else:
+            parts += [x.strip() for x in seg.split(",") if x.strip()]
+    for p in parts:
+        # Что остаётся без американских мест и служебных слов: «London» в «New York or London» — уже не только США
+        rest = GENERIC_LOC.sub(" ", US_LOC.sub(" ", p)).strip()
+        if rest:
+            non_us += 1          # Лондон, EMEA, Global, Americas, любая другая страна — не только США
+        elif US_LOC.search(p):
+            us += 1
+    if non_us:
+        return None
+    if us:
+        return "все локации в США"
+    if US_WORK_REQ.search(job.get("description", "") or ""):
+        return "требуется право работать / жить в США"
+    return None
+
+
 def _hits(patterns, text):
     return sorted({m.group(0).lower() for p in patterns for m in [re.search(p, text, re.I)] if m})
 

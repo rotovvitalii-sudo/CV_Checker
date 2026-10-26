@@ -18,7 +18,7 @@ function stamp() {
   // applications.json сюда не входит: он сохраняется при каждом опросе списка. Входящие
   // отфильтровывает сервер (inboxUrls в /api/feed)
   let s = mtime(SKIPPED) + mtime(path.join(ROOT, 'job-search', 'corpus', 'jobs.jsonl'))
-    + mtime(path.join(ROOT, 'vacancies'));
+    + mtime(path.join(ROOT, 'vacancies')) + mtime(path.join(ROOT, 'knowledge-base', 'profile.json')); // профиль: фильтр «только США»
   if (fs.existsSync(RAW)) for (const f of fs.readdirSync(RAW)) s += mtime(path.join(RAW, f));
   return s;
 }

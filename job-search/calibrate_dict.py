@@ -10,7 +10,7 @@ calibrate_dict.py — проверка словаря classify.py на фикс�
 import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from classify import classify, edtech_role, fintech_role
+from classify import classify, edtech_role, fintech_role, us_only
 
 rows = json.loads((Path(__file__).parent / "fixtures" / "fixtures.json").read_text())
 ok = True
@@ -41,5 +41,13 @@ for r in json.loads((Path(__file__).parent / "fixtures" / "fintech_roles.json").
     good = got == r["expect"]
     ok &= good
     print(f"{r['title'][:44]:<46} {str(r['expect']):<9} {str(got):<9} {'PASS' if good else 'FAIL'}")
+
+# Только США (2026-10-26): такие вакансии в ленту не попадают
+print(f"\n{'только США (локация / текст)':<46} {'ждём':<9} {'итог':<9} результат")
+for r in json.loads((Path(__file__).parent / "fixtures" / "us_only.json").read_text()):
+    got = bool(us_only(r))
+    good = got == r["expect"]
+    ok &= good
+    print(f"{(r['location'] + ' ' + r['description'])[:44]:<46} {str(r['expect']):<9} {str(got):<9} {'PASS' if good else 'FAIL'}")
 
 print("\nВСЕ ФИКСТУРЫ ПРОХОДЯТ" if ok else "ЕСТЬ ОТКЛОНЕНИЯ — правь словарь в classify.py")

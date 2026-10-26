@@ -1806,6 +1806,8 @@ app.put('/api/profile', wrap(async (req, res) => {
     if (!['no', 'with_support', 'any'].includes(b.relocation)) return res.status(400).json({ error: 'relocation: no | with_support | any' });
     next.relocation = b.relocation;
   }
+  // Лента: скрывать вакансии только для США (переезд или резидентство) — job-search/classify.py → us_only()
+  if (b.exclude_us_only !== undefined) next.exclude_us_only = !!b.exclude_us_only;
   if (b.no_reply_days !== undefined) {
     const n = Number(b.no_reply_days);
     if (!(n >= 1 && n <= 90)) return res.status(400).json({ error: '«Без ответа через» — от 1 до 90 дней' });

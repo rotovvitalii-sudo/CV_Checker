@@ -736,3 +736,4 @@ table.grid td.num { white-space: nowrap; }
 
 /* S4 P1 · библиотека ответов */
 .v-text.editing, .sub-a.editing { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; background: var(--panel); }
+.hidden-us { margin-top: 6px; } .hidden-us ul { max-height: 220px; overflow: auto; margin: 6px 0 0; }
