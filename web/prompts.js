@@ -39,6 +39,47 @@ ${save}
 ${KEYWORDS_STEP(vacName, true)}`;
 }
 
+// Быстрый фит (2026-10-27): один ход без инструментов. Сервер сам кладёт в промпт рубрику и ядро кандидата
+// (разделы 2, 4, 5 job-fit-search-brief.md), профиль поиска и реестр карточек; модель возвращает один JSON,
+// дальше — score_job.py add и ключевые слова на сервере. Сверено с агентным фитом Sonnet на 22 вакансиях:
+// средняя разница балла 0.6, решение «7+ / ниже» совпало в 21 из 22, ≈ $0.003 против ≈ $0.33.
+const FIT_QUICK_SYSTEM = 'Ты оцениваешь фит вакансии для одного кандидата по заданной рубрике. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function fitQuick({ briefText, profile, cardsIndex, vacancy }) {
+  const sec = (n) => (briefText.match(new RegExp(`## ${n}\\.[\\s\\S]*?(?=\\n## \\d+\\.|$)`)) || [''])[0].trim();
+  const prof = { ...profile };
+  delete prof.money; delete prof._note;
+  return `${sec(2)}
+
+${sec(4)}
+
+${sec(5)}
+
+Якоря (не завышай, сомневаешься между двумя — ставь меньший):
+- Фит по задаче: 4 — компания прямо собирается запускать/строить академию, LMS, образовательный продукт для клиентов, customer education, education-led онбординг/активацию; 3 — обучающий продукт уже есть, роль его растит; 2 — рост через контент или онбординг, где обучение — не продукт; 1 — обучение упомянуто вскользь ИЛИ это внутреннее обучение сотрудников (L&D, онбординг персонала, корпоративная LMS для своих людей); 0 — нет связи. «Senior PM в хорошей компании» без задачи обучения — 0.
+- Домен: 2 — компания сама EdTech / FinTech / брокер / крипто (продукт для внешних клиентов); 1 — смежный; 0 — прочее. Внутренняя LMS не делает компанию EdTech-продуктом.
+- Тип роли: 2 — продуктовое лидерство с бизнесом (Product Lead, Head of Product, Senior PM с growth); 1 — PMM, Growth, Ops, GM, «builder»/универсальная роль; 0 — технический/платформенный PM, не продукт.
+- Логистика: 2 — формат, локация и языки явно подходят профилю; 1 — частично или не указано; 0 — не подходят (онсайт вне локаций без релокации, нужен язык, которого нет).
+Логистика — по профилю поиска: ${JSON.stringify(prof)}
+
+Карточки кейсов кандидата (anchor_card — ровно id из первой колонки или null):
+${cardsIndex}
+
+Вакансия:
+"""
+${vacancy.slice(0, 14000)}
+"""
+
+Верни JSON: все поля схемы раздела 4, плюс
+"scores": {"task_fit":0-4,"domain":0-2,"role_type":0-2,"logistics":0-2} — только эти четыре ключа, без total,
+"why": "2–3 предложения ПО-РУССКИ (не на языке вакансии), почему такой фит",
+"anchor_card": "id или null", "anchor_case": "одна фраза по-русски", "gaps": ["требования вакансии, которых нет в карточках — по-русски"],
+"keywords": {"must": ["10–18 ключевых слов/фраз из вакансии на её языке; синонимы через |, например \\"customer education|client education\\""], "nice": ["6–12"]},
+"requirements": {"must": [{"req": "требование по-русски", "evidence": "что считается доказательством"}], "nice": [{"req": "", "evidence": ""}]}.
+"languages_required" — только языки, без которых не возьмут (не «плюс», не «желательно»; английский не указывай, если он просто рабочий язык вакансии); языки-плюсы — в nice_to_have.
+Дата публикации — только если есть в тексте (YYYY-MM-DD), иначе "". Ничего не выдумывай о вакансии.`;
+}
+
 // Шаг 1 tailor-cv отдельно: требования и ключевые слова нужны для матча вакансии с Master CV
 function KEYWORDS_STEP(name, skipIfExists) {
   return `Последний шаг — шаг 1 скила tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`, раздел «Шаг 1»)
@@ -57,6 +98,7 @@ function tailor({ name }) {
   return `${BACKGROUND}
 
 Задача: выполни скил tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`) целиком для \`vacancies/${name}.md\`.
+Если \`output/${name}/01-keywords.json\` содержит \`"source": "quick"\` (черновик быстрого фита) — шаг 1 сделай заново.
 Если \`output/${name}/01-requirements.md\` и \`01-keywords.json\` уже существуют — шаг 1 не переделывай,
 используй их (по этим ключам считается матч вакансии с Master CV, он не должен скакать).
 Папка результата — строго \`output/${name}/\` (имя совпадает с именем файла вакансии без .md).
@@ -295,4 +337,4 @@ function sectorCompany({ sector, name, careersUrl }) {
 Другие компании не трогай.`;
 }
 
-module.exports = { fit, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
+module.exports = { fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

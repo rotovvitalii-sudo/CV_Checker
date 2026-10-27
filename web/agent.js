@@ -3,6 +3,7 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const runs = require('./runs');
 const events = require('./events');
@@ -24,6 +25,7 @@ const JOB_TITLES = {
   interview: ['Подготовка к собеседованию готова', 'Подготовка к собеседованию не собралась'],
   practice: ['Оценка ответа готова', 'Оценка ответа не получилась'],
   voice: ['Голосовой профиль обновлён', 'Голосовой профиль не собрался'],
+  fitquick: ['Фит оценён', 'Оценка фита не удалась'],
 };
 function jobLink(job) {
   const t = job.vacancy || job.target;
@@ -99,7 +101,7 @@ function emit(job, ev) {
 const MODELS_FILE = path.join(ROOT, 'web', 'data', 'agent-models.json');
 const MODEL_CHOICES = ['haiku', 'sonnet', 'opus', 'default'];
 const TASKS = {
-  fit: ['Оценка фита', 'sonnet'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
+  fit: ['Оценка фита подробно (агент)', 'sonnet'], fitquick: ['Быстрый фит (один ход)', 'haiku'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
   casescan: ['Поиск фактов в надиктовках', 'haiku'], edtech: ['Расширение базы компаний', 'haiku'],
   tailor: ['Адаптация CV', 'sonnet'], letter: ['Письмо из надиктовки', 'sonnet'], lettergen: ['Сгенерированное письмо', 'sonnet'],
   outline: ['Структура письма', 'sonnet'], answers: ['Ответы на вопросы формы', 'sonnet'], verdict: ['Вердикт рекрутера', 'sonnet'], outreach: ['Первое сообщение контакту', 'sonnet'], interview: ['Подготовка к собеседованию', 'sonnet'], practice: ['Тренажёр собеседования', 'sonnet'],
@@ -119,14 +121,17 @@ function saveModels(next) {
 }
 const modelFor = (kind) => readModels()[kind] || 'default';
 
-// kind: fit | tailor | letter; target: имя вакансии или id входящей; onDone(job) — после выхода процесса
-function runJob({ kind, target, prompt, logFile, onDone }) {
+// kind: fit | tailor | letter; target: имя вакансии или id входящей; onDone(job) — после выхода процесса.
+// system — режим «один ход»: без инструментов, без системного промпта Claude Code и CLAUDE.md, весь контекст в prompt;
+// ответ — job.finalText. Такие задачи лёгкие (секунды, центы) и не ждут в общей очереди.
+function runJob({ kind, target, prompt, logFile, onDone, system }) {
   const id = crypto.randomUUID().slice(0, 8);
   const job = {
     id, kind, target, state: 'queued', created: Date.now(), started: null, finished: null,
-    error: null, finalText: '', events: [], listeners: new Set(), prompt, logFile, onDone,
+    error: null, finalText: '', events: [], listeners: new Set(), prompt, logFile, onDone, system,
   };
   jobs.set(id, job);
+  if (system) { start(job, true); return job; }
   queue.push(job);
   pump();
   return job;
@@ -136,8 +141,8 @@ function pump() {
   while (running < MAX_PARALLEL && queue.length) start(queue.shift());
 }
 
-function start(job) {
-  running++;
+function start(job, once = false) {
+  if (!once) running++;
   job.state = 'running';
   job.started = Date.now();
   emit(job, { kind: 'state', text: 'агент запущен' });
@@ -147,13 +152,16 @@ function start(job) {
 
   job.model = modelFor(job.kind);
   log.write(`# MODEL ${job.model}\n`);
-  const child = spawn('claude', [
-    '-p', '--output-format', 'stream-json', '--verbose',
-    ...(job.model !== 'default' ? ['--model', job.model] : []),
-    '--permission-mode', 'acceptEdits',
-    '--allowedTools', ALLOWED_TOOLS,
-    '--disallowedTools', 'AskUserQuestion,Agent',
-  ], { cwd: ROOT, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const args = once
+    ? ['-p', '--output-format', 'stream-json', '--verbose', ...(job.model !== 'default' ? ['--model', job.model] : []),
+      '--tools', '', '--system-prompt', job.system, '--no-session-persistence', '--strict-mcp-config']
+    : ['-p', '--output-format', 'stream-json', '--verbose',
+      ...(job.model !== 'default' ? ['--model', job.model] : []),
+      '--permission-mode', 'acceptEdits',
+      '--allowedTools', ALLOWED_TOOLS,
+      '--disallowedTools', 'AskUserQuestion,Agent'];
+  // Один ход — из нейтральной папки, чтобы CLI не подмешивал CLAUDE.md проекта (лишние токены)
+  const child = spawn('claude', args, { cwd: once ? os.tmpdir() : ROOT, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
   job.pid = child.pid;
   child.stdin.end(job.prompt);
 
@@ -224,7 +232,7 @@ function start(job) {
       });
     } catch { /* уведомление не должно ронять задачу */ }
     emit(job, { kind: 'state', text: job.error ? `ошибка: ${job.error}` : 'завершено', done: true });
-    running--;
+    if (!once) running--;
     pump();
   };
   child.on('error', (e) => finish(null, e));

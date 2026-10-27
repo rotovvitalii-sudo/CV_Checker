@@ -346,9 +346,90 @@ app.post('/api/vacancies/:name/reveal', wrap(async (req, res) => {
 
 // ---------- шаг 1: новая вакансия → фит ----------
 
+// ---------- быстрый фит (2026-10-27): один ход модели без инструментов, остальное — сервер ----------
+// Контекст, который агент раньше собирал 16 ходами (бриф, профиль, карточки), кладётся в один промпт.
+function fitQuickPrompt(vacancy) {
+  const read = (f, d = '') => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch { return d; } };
+  const briefText = read('job-fit-search-brief.md') || read('examples/demo/job-fit-search-brief.md');
+  let profile = {};
+  try { profile = JSON.parse(read('knowledge-base/profile.json', '{}')); } catch {}
+  const cardsIndex = read('knowledge-base/cards/INDEX.md').split('\n').filter((l) => l.startsWith('| [')).join('\n');
+  return prompts.fitQuick({ briefText, profile, cardsIndex, vacancy });
+}
+
+const SCORE_MAX = { task_fit: 4, domain: 2, role_type: 2, logistics: 2 };
+// Ответ модели → job.json для score_job.py (баллы зажаты в шкалу) + ключи и требования для шага 1 tailor-cv
+function parseQuickFit(text) {
+  const t = String(text || '');
+  const from = t.indexOf('{'), to = t.lastIndexOf('}');
+  if (from < 0 || to < from) throw new Error('модель не вернула JSON');
+  const d = JSON.parse(t.slice(from, to + 1));
+  const scores = Object.fromEntries(Object.entries(SCORE_MAX).map(([k, max]) => [k, Math.max(0, Math.min(max, Math.round(Number(d.scores?.[k]) || 0)))]));
+  const { keywords, requirements, ...job } = d;
+  return { job: { ...job, scores }, keywords: keywords || {}, requirements: requirements || {} };
+}
+
+// 01-keywords.json и 01-requirements.md из быстрого фита — черновик (source: quick); tailor-cv переделает шаг 1
+function writeQuickKeywords(name, keywords, requirements, title) {
+  const dir = store.outDir(name);
+  const kwFile = path.join(dir, '01-keywords.json');
+  let old = null;
+  try { old = JSON.parse(fs.readFileSync(kwFile, 'utf8')); } catch {}
+  if (old && old.source !== 'quick') return; // ключи полного шага 1 не трогаем
+  const list = (x) => (Array.isArray(x) ? x.map(String).map((v) => v.trim()).filter(Boolean).slice(0, 25) : []);
+  const must = list(keywords.must), nice = list(keywords.nice);
+  if (!must.length) return;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(kwFile, `${JSON.stringify({ source: 'quick', must, nice }, null, 2)}\n`);
+  const row = (r) => `| ${String(r.req || '').replace(/\|/g, '/')} | ${String(r.evidence || '').replace(/\|/g, '/')} |`;
+  const reqs = (k) => (Array.isArray(requirements[k]) ? requirements[k] : []).filter((r) => r && r.req);
+  fs.writeFileSync(path.join(dir, '01-requirements.md'), `# Требования: ${title}\n\n_Черновик быстрого фита — tailor-cv уточнит на шаге 1._\n\n`
+    + `## Must\n\n| Требование | Что считается доказательством |\n|---|---|\n${reqs('must').map(row).join('\n')}\n\n`
+    + `## Nice\n\n| Требование | Доказательство |\n|---|---|\n${reqs('nice').map(row).join('\n')}\n`);
+}
+
+function scoreJobAdd(args) {
+  return new Promise((resolve, reject) => {
+    execFile(path.join(ROOT, '.venv', 'bin', 'python'), ['scorer/score_job.py', 'add', ...args], { cwd: ROOT, timeout: 60000 },
+      (err, stdout, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n').pop())) : resolve(stdout)));
+  });
+}
+
+// Быстрый фит: target — id входящей или имя вакансии; existing — вакансия уже есть (переоценка)
+function runQuickFit({ target, vacancy, url, source, existing, onResult }) {
+  const id = existing ? crypto.randomUUID().slice(0, 8) : target;
+  const jobFile = path.join(INBOX, `${id}.job.json`);
+  const resultFile = path.join(INBOX, `${id}.result.json`);
+  fs.rmSync(resultFile, { force: true });
+  return runJob({
+    kind: 'fitquick', target, system: prompts.FIT_QUICK_SYSTEM,
+    prompt: fitQuickPrompt(vacancy),
+    logFile: path.join(INBOX, `${id}.log`),
+    onDone: async (job) => {
+      const q = parseQuickFit(job.finalText);
+      fs.writeFileSync(jobFile, JSON.stringify({ ...q.job, url: url || q.job.url || '', source: source || q.job.source || 'manual',
+        raw_text: vacancy, fit_mode: 'quick' }, null, 2));
+      await scoreJobAdd([existing ? '--no-save' : '--save-always', '--result', resultFile, jobFile]);
+      if (!fs.existsSync(resultFile)) throw new Error('score_job.py не записал результат');
+      const r = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+      const name = existing || (r.vacancy_file ? path.basename(r.vacancy_file, '.md') : null);
+      if (!name) throw new Error('скоринг прошёл, но файл вакансии не создан');
+      writeQuickKeywords(name, q.keywords, q.requirements, `${q.job.title || ''} — ${q.job.company || ''}`);
+      await onResult(r, name, job);
+    },
+  });
+}
+
 function startFit(item) {
   const id = item.id;
   const resultFile = path.join(INBOX, `${id}.result.json`);
+  // Есть текст вакансии — быстрый фит (один ход, ≈ $0.003); только ссылка — агент (ему нужен WebFetch)
+  const textFile = path.join(INBOX, `${id}.txt`);
+  if (item.hasText && fs.existsSync(textFile)) {
+    const job = runQuickFit({ target: id, vacancy: fs.readFileSync(textFile, 'utf8'), url: item.url, source: item.source,
+      onResult: async (r, name, j) => applyInboxFit(item, r, name, j) });
+    return trackInboxJob(item, job);
+  }
   fs.rmSync(resultFile, { force: true });
   const job = runJob({
     kind: 'fit', target: id,
@@ -364,20 +445,27 @@ function startFit(item) {
         return;
       }
       if (!r.vacancy_file) throw new Error('скоринг прошёл, но файл вакансии не создан');
-      const name = path.basename(r.vacancy_file, '.md');
-      job.vacancy = name;
-      const a = store.app(name);
-      a.fit = store.pickFit(r);
-      if (item.foundOn && !a.foundOn) a.foundOn = item.foundOn;
-      if ((a.fit?.total ?? 0) >= 7 && a.fit.bucket !== 'corpus') {
-        events.add({ type: 'strong_fit', title: `Сильный фит: ${a.fit.total}/10`, text: name, link: `#/v/${encodeURIComponent(name)}` });
-      }
-      if (item.url && a.fit && !a.fit.url) a.fit.url = item.url;
-      item.state = 'done';
-      item.name = name;
-      store.save();
+      applyInboxFit(item, r, path.basename(r.vacancy_file, '.md'), job, 'deep');
     },
   });
+  return trackInboxJob(item, job);
+}
+
+function applyInboxFit(item, r, name, job, mode = 'quick') {
+  job.vacancy = name;
+  const a = store.app(name);
+  a.fit = { ...store.pickFit(r), mode, model: job.actualModel || job.model || null };
+  if (item.foundOn && !a.foundOn) a.foundOn = item.foundOn;
+  if ((a.fit?.total ?? 0) >= 7 && a.fit.bucket !== 'corpus') {
+    events.add({ type: 'strong_fit', title: `Сильный фит: ${a.fit.total}/10`, text: name, link: `#/v/${encodeURIComponent(name)}` });
+  }
+  if (item.url && a.fit && !a.fit.url) a.fit.url = item.url;
+  item.state = 'done';
+  item.name = name;
+  store.save();
+}
+
+function trackInboxJob(item, job) {
   item.jobId = job.id;
   item.state = 'running';
   item.reason = '';
@@ -1200,8 +1288,15 @@ function attach(name, kind, job) {
   store.save();
 }
 
-function fitVacancy(name) {
+function fitVacancy(name, mode = 'quick') {
   const a = store.app(name);
+  if (mode === 'quick') {
+    const job = runQuickFit({ target: name, existing: name, vacancy: fs.readFileSync(path.join(store.VACANCIES, `${name}.md`), 'utf8'),
+      url: a.fit?.url, source: a.fit?.source,
+      onResult: async (r, n, j) => { a.fit = { ...store.pickFit(r), mode: 'quick', model: j.actualModel || j.model || null }; store.save(); } });
+    attach(name, 'fit', job);
+    return job;
+  }
   const id = crypto.randomUUID().slice(0, 8);
   const resultFile = path.join(INBOX, `${id}.result.json`);
   const job = runJob({
@@ -1210,7 +1305,7 @@ function fitVacancy(name) {
     logFile: path.join(INBOX, `${id}.log`),
     onDone: async () => {
       if (!fs.existsSync(resultFile)) throw new Error('агент не записал результат скоринга');
-      a.fit = store.pickFit(JSON.parse(fs.readFileSync(resultFile, 'utf8')));
+      a.fit = { ...store.pickFit(JSON.parse(fs.readFileSync(resultFile, 'utf8'))), mode: 'deep', model: job.actualModel || job.model || null };
       store.save();
     },
   });
@@ -1222,7 +1317,7 @@ app.post('/api/vacancies/:name/fit', agentReady, wrap(async (req, res) => {
   const name = store.safeName(req.params.name);
   if (busy(store.app(name), 'fit')) return res.status(409).json({ error: 'уже идёт' });
   if (!fs.existsSync(path.join(store.VACANCIES, `${name}.md`))) return res.status(400).json({ error: 'нет файла вакансии' });
-  res.json({ jobId: fitVacancy(name).id });
+  res.json({ jobId: fitVacancy(name, req.body?.mode === 'deep' ? 'deep' : 'quick').id });
 }));
 
 // C4 P1: у ручной заявки появился текст вакансии — вписать его в файл (шапку front matter сохраняем) и оценить фит

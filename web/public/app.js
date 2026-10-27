@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -124,7 +124,7 @@ function stageOf(i) {
   // Шаги идут по порядку: фит → CV → письмо → отправка; дальний пройденный шаг закрашивает все до него
   const done = SENT.includes(i.status) ? 4 : i.letterFile ? 3 : i.hasCV ? 2 : fit != null ? 1 : 0;
   if (run) {
-    const label = { tailor: 'CV в работе', letter: 'Письмо в работе', fit: 'Оценка фита', keywords: 'Ключевые слова', outline: 'Структура письма', lettergen: 'Письмо в работе' }[run.kind] || 'В работе';
+    const label = { tailor: 'CV в работе', letter: 'Письмо в работе', fit: 'Оценка фита', fitquick: 'Быстрый фит', keywords: 'Ключевые слова', outline: 'Структура письма', lettergen: 'Письмо в работе' }[run.kind] || 'В работе';
     return { key: 'agent', chip: 'Агент работает', tone: 'neutral', table: label, done, partial: true,
       text: `${STEP_LABELS[run.kind] || run.kind}: ${run.last || 'запускаю агента…'}`, action: 'log' };
   }
@@ -484,10 +484,15 @@ function renderDetail() {
 
     <div class="card">
       <h2><span class="n">1</span>Матч
-        <span class="right">${d.hasVacancy && d.hasVacancyText ? `<button class="small" id="fitBtn" ${fitBusy ? 'disabled' : ''}>${fit ? 'Переоценить' : 'Оценить фит'}</button>` : ''}</span></h2>
+        <span class="right">${d.hasVacancy && d.hasVacancyText ? `<button class="small" id="fitBtn" ${fitBusy ? 'disabled' : ''} title="Быстрый фит: один ход модели, ≈ $0.003">${fit ? 'Переоценить' : 'Оценить фит'}</button>
+          ${fit ? `<button class="small" id="fitDeepBtn" ${fitBusy ? 'disabled' : ''} title="Агент читает скил, бриф и карточки сам — точнее, ≈ $0.3">Подробно (≈ $0.3)</button>` : ''}` : ''}</span></h2>
+      ${fit?.mode ? `<p class="${fit.mode === 'quick' && [5, 6].includes(fit.total) ? 'warn-text' : 'muted'} small" style="margin:-6px 0 8px">${fit.mode === 'quick'
+        ? ([5, 6].includes(fit.total) ? `Быстрый фит ${fit.total}/10 — на границе: быстрый иногда ставит на балл ниже, чем подробный. Если вакансия интересна — нажми «Подробно».`
+          : `Быстрый фит · ${esc(modelShort(fit.model))} · один ход. Для перспективной вакансии — «Подробно».`)
+        : `Подробный фит агентом · ${esc(modelShort(fit.model))}.`}</p>` : ''}
       ${fitBusy || jFit?.state === 'error' ? jobBlock(jFit) : ''}
       ${d.hasVacancy && !d.hasVacancyText && !fitBusy ? `<div class="vac-text-box">
-        <p class="muted small" style="margin:0 0 6px">Заявка добавлена без текста вакансии. Вставь его — агент оценит фит и ключи (≈ $0.4–0.6), дальше доступны CV, письмо и подготовка.</p>
+        <p class="muted small" style="margin:0 0 6px">Заявка добавлена без текста вакансии. Вставь его — быстрый фит оценит вакансию и ключи (≈ $0.003, полминуты), дальше доступны CV, письмо и подготовка.</p>
         <label class="sr-only" for="vacText">Текст вакансии</label>
         <textarea id="vacText" rows="8" placeholder="Скопируй текст вакансии целиком со страницы"></textarea>
         <div class="row" style="margin-top:8px"><button type="button" class="primary small" id="vacTextBtn">Сохранить и оценить фит</button>
@@ -570,6 +575,9 @@ function masterBlock(d, kwBusy, jKw) {
     ${m.mustMiss.length ? `<div class="row" style="margin-top:6px"><span class="muted">Нет в Master (must):</span>${m.mustMiss.map((k) => `<span class="chip">${esc(k.split('|')[0])}</span>`).join(' ')}</div>` : ''}
   </div>`;
 }
+
+// claude-haiku-5-5 → Haiku 5.5
+const modelShort = (m) => { const x = String(m || '').match(/(haiku|sonnet|opus|fable)-(\d+)-(\d+)/i); return x ? `${x[1][0].toUpperCase()}${x[1].slice(1)} ${x[2]}.${x[3]}` : (m || 'модель'); };
 
 function fitBody(f) {
   const bars = Object.entries(SCORE_LABELS).map(([k, [lbl, max]]) => {
@@ -704,6 +712,10 @@ function bindDetail() {
   $('#reveal').addEventListener('click', () => api(`/api/vacancies/${enc(d.name)}/reveal`, { method: 'POST' }));
   document.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => openDoc(b.dataset.doc)));
   $('#fitBtn')?.addEventListener('click', () => startStep('fit'));
+  $('#fitDeepBtn')?.addEventListener('click', () => {
+    if (!confirm('Подробный фит агентом: читает скил, бриф и карточки сам. ≈ $0.3, около минуты. Запустить?')) return;
+    startStep('fit', { mode: 'deep' });
+  });
   $('#vacText')?.addEventListener('input', (e) => {
     const n = e.target.value.trim() ? e.target.value.trim().split(/\s+/).length : 0;
     $('#vacTextHint').textContent = n ? `${n} слов${n < 50 ? ' — нужно хотя бы 50' : ''}` : '';
@@ -1678,7 +1690,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -1769,8 +1781,8 @@ async function loadAgentPage() {
 
     <section class="stack" aria-labelledby="modelsTitle">
       <h2 id="modelsTitle">Модель по задачам</h2>
-      <p class="muted small" style="margin:0">Sonnet — почти вдвое дешевле Opus с тем же качеством на фите и CV. Haiku (4.5) — ещё вчетверо дешевле,
-        но на фите завышает баллы и пропускает карточку — оставлена там, где результат проверяет скрипт или ты.
+      <p class="muted small" style="margin:0">Sonnet — почти вдвое дешевле Opus с тем же качеством на CV и письмах. Haiku — ещё в разы дешевле: на ней быстрый фит
+        (один ход без инструментов, ≈ $0.004; на 22 вакансиях решение «7+ / ниже» совпало с Sonnet в 20–21 случае) и задачи, которые проверяет скрипт или ты.
         «По умолчанию» — модель Claude Code (сейчас Opus, самая дорогая). Применяется к следующим запускам.</p>
       <div class="table-box" id="modelsBox"><p class="muted small" style="padding:12px">Загружаю…</p></div>
     </section>
@@ -2007,7 +2019,7 @@ function feedCard(j) {
       <div class="two"><button type="button" class="btn primary" data-fsave="${k}">Сохранить</button>
         <button type="button" class="btn ghost" data-fskip="${k}">Пропустить</button></div>
       <button type="button" class="link-btn inline" data-ftarget="${esc(j.company)}" title="Добавить компанию в целевые (W4)">★ В целевые</button>
-      <div class="feed-foot"><span class="muted small">Сохранить = оценка фита агентом, ≈ $0.4–0.6</span>
+      <div class="feed-foot"><span class="muted small">Сохранить = быстрый фит (Haiku, один ход), ≈ $0.004</span>
         ${j.url ? `<a href="${esc(j.url)}" target="_blank" rel="noopener">Открыть на сайте ↗</a>` : ''}</div>
     </div>
   </article>`;

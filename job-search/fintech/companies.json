@@ -7,7 +7,7 @@
   "ats": "lever",
   "token": "1inch",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:01Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 6,
   "roles_last": 1,
   "note": ""
@@ -33,7 +33,7 @@
   "ats": "greenhouse",
   "token": "alpaca",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:01Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 70,
   "roles_last": 13,
   "note": ""
@@ -46,7 +46,7 @@
   "ats": "lever",
   "token": "anchorage",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 23,
   "roles_last": 0,
   "note": ""
@@ -98,9 +98,9 @@
   "ats": "greenhouse",
   "token": "binance",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
-  "jobs_last": 246,
-  "roles_last": 41,
+  "checked_at": "2026-10-27T08:19:47Z",
+  "jobs_last": 251,
+  "roles_last": 42,
   "note": ""
  },
  {
@@ -124,7 +124,7 @@
   "ats": "recruitee",
   "token": "bitfinex",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 9,
   "roles_last": 0,
   "note": ""
@@ -150,7 +150,7 @@
   "ats": "greenhouse",
   "token": "bitpanda",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 35,
   "roles_last": 7,
   "note": ""
@@ -189,7 +189,7 @@
   "ats": "ashby",
   "token": "bitvavo",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:47Z",
   "jobs_last": 15,
   "roles_last": 3,
   "note": ""
@@ -202,8 +202,8 @@
   "ats": "greenhouse",
   "token": "blockchain",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
-  "jobs_last": 45,
+  "checked_at": "2026-10-27T08:19:48Z",
+  "jobs_last": 43,
   "roles_last": 4,
   "note": ""
  },
@@ -241,7 +241,7 @@
   "ats": "greenhouse",
   "token": "bybit",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 154,
   "roles_last": 21,
   "note": ""
@@ -306,8 +306,8 @@
   "ats": "greenhouse",
   "token": "coinbase",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
-  "jobs_last": 225,
+  "checked_at": "2026-10-27T08:19:48Z",
+  "jobs_last": 226,
   "roles_last": 16,
   "note": ""
  },
@@ -345,7 +345,7 @@
   "ats": "ashby",
   "token": "consensys",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:04Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 8,
   "roles_last": 0,
   "note": ""
@@ -358,7 +358,7 @@
   "ats": "lever",
   "token": "crypto",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 99,
   "roles_last": 17,
   "note": ""
@@ -397,7 +397,7 @@
   "ats": "greenhouse",
   "token": "drivewealth",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 24,
   "roles_last": 2,
   "note": ""
@@ -475,7 +475,7 @@
   "ats": "greenhouse",
   "token": "fireblocks",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 27,
   "roles_last": 0,
   "note": ""
@@ -514,7 +514,7 @@
   "ats": "ashby",
   "token": "freetrade",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 3,
   "roles_last": 0,
   "note": ""
@@ -540,7 +540,7 @@
   "ats": "greenhouse",
   "token": "fxpro",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 31,
   "roles_last": 8,
   "note": ""
@@ -553,7 +553,7 @@
   "ats": "greenhouse",
   "token": "gemini",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 30,
   "roles_last": 3,
   "note": ""
@@ -644,7 +644,7 @@
   "ats": "ashby",
   "token": "ledger",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:48Z",
   "jobs_last": 13,
   "roles_last": 1,
   "note": ""
@@ -670,7 +670,7 @@
   "ats": "ashby",
   "token": "lemon-markets",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:49Z",
   "jobs_last": 13,
   "roles_last": 1,
   "note": ""
@@ -709,7 +709,7 @@
   "ats": "greenhouse",
   "token": "luno",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:49Z",
   "jobs_last": 2,
   "roles_last": 0,
   "note": ""
@@ -735,7 +735,7 @@
   "ats": "lever",
   "token": "moonpay",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 21,
   "roles_last": 3,
   "note": ""
@@ -800,9 +800,9 @@
   "ats": "greenhouse",
   "token": "okx",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
-  "jobs_last": 361,
-  "roles_last": 106,
+  "checked_at": "2026-10-27T08:19:50Z",
+  "jobs_last": 363,
+  "roles_last": 103,
   "note": ""
  },
  {
@@ -813,7 +813,7 @@
   "ats": "ashby",
   "token": "paxos",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 21,
   "roles_last": 1,
   "note": ""
@@ -839,7 +839,7 @@
   "ats": "ashby",
   "token": "phantom",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 12,
   "roles_last": 2,
   "note": ""
@@ -865,8 +865,8 @@
   "ats": "greenhouse",
   "token": "public",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
-  "jobs_last": 2,
+  "checked_at": "2026-10-27T08:19:50Z",
+  "jobs_last": 3,
   "roles_last": 1,
   "note": ""
  },
@@ -930,7 +930,7 @@
   "ats": "greenhouse",
   "token": "robinhood",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 155,
   "roles_last": 16,
   "note": ""
@@ -1060,7 +1060,7 @@
   "ats": "smartrecruiters",
   "token": "swissquote",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 46,
   "roles_last": 1,
   "note": ""
@@ -1073,7 +1073,7 @@
   "ats": "greenhouse",
   "token": "tastytrade",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 12,
   "roles_last": 2,
   "note": ""
@@ -1086,7 +1086,7 @@
   "ats": "greenhouse",
   "token": "thinkmarkets",
   "status": "broken",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 4,
   "roles_last": 0,
   "note": ""
@@ -1125,7 +1125,7 @@
   "ats": "ashby",
   "token": "trading212",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:08Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 52,
   "roles_last": 4,
   "note": ""
@@ -1151,7 +1151,7 @@
   "ats": "ashby",
   "token": "trust-wallet",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:09Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 13,
   "roles_last": 4,
   "note": ""
@@ -1164,7 +1164,7 @@
   "ats": "ashby",
   "token": "uniswap",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:09Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 6,
   "roles_last": 1,
   "note": ""
@@ -1190,7 +1190,7 @@
   "ats": "ashby",
   "token": "upvest",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:09Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 18,
   "roles_last": 2,
   "note": ""
@@ -1255,7 +1255,7 @@
   "ats": "lever",
   "token": "xtb",
   "status": "ok",
-  "checked_at": "2026-10-26T19:33:09Z",
+  "checked_at": "2026-10-27T08:19:50Z",
   "jobs_last": 41,
   "roles_last": 5,
   "note": ""
