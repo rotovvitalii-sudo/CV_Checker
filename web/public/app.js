@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -847,8 +847,10 @@ async function startStep(kind, body) {
 
 function attachFeed(job) {
   const box = document.querySelector(`[data-feed="${job.id}"]`);
-  if (!box) return;
+  // Блока ленты нет (W8: панель темы рисуется позже) — всё равно слушаем, чтобы перерисовать карточку по окончании
+  if (!box && !['running', 'queued'].includes(job.state)) return;
   const render = () => {
+    if (!box) return;
     const evs = feeds.get(job.id) || [];
     box.innerHTML = evs.map((e) => `<div class="${e.kind}">${e.kind === 'tool' ? '→ ' : ''}${esc(e.text)}</div>`).join('');
     box.scrollTop = box.scrollHeight;
@@ -1386,6 +1388,7 @@ function interviewBlock(d) {
     <section class="iv-sec"><h3 class="st-h">Рискованные вопросы</h3>
       <ul class="tight">${P.risky.map((r) => `<li><strong>${esc(r.q)}</strong><div class="muted small">${esc(r.why)}${r.hint ? ` · опора: ${esc(r.hint)}` : ''}</div></li>`).join('')}</ul></section>
     <section class="iv-sec"><h3 class="st-h">Вопросы к компании</h3><ul class="tight">${(P.ask || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ul></section>
+    ${topicsSection(d)}
     <section class="iv-sec trainer"><h3 class="st-h">Тренажёр — голосом, по одному вопросу до сильного ответа</h3>
       <p class="muted small" style="margin:0 0 8px">Интервьюер копает уточнениями и не хвалит; ответ за тебя не переписывает. На живом собеседовании AI-подсказки не используй.</p>
       <label class="sr-only" for="ivQ">Вопрос</label>
@@ -1407,7 +1410,164 @@ function interviewBlock(d) {
   </div>`;
 }
 
+// ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
+let openTopic = null;          // slug открытой темы
+let topicResult = null;        // { slug, …результат последней сдачи } — показываем после проверки
+let topicAnswers = {};         // { questionId: индекс варианта } — переживает перерисовку карточки
+let topicLang = 'en';
+try { topicLang = localStorage.getItem('cvc-topic-lang') || 'en'; } catch {}
+const TOPIC_JOBS = ['lesson', 'lessonvideo', 'translate', 'topictest'];
+const topicJob = (d, kind, slug) => { const j = d.jobs[kind]; return j && j.topic === slug ? j : null; };
+const jobBusy = (j) => j && ['running', 'queued'].includes(j.state);
+const ytId = (u) => (String(u || '').match(/(?:v=|youtu\.be\/)([\w-]{6,})/) || [])[1] || '';
+
+function topicPill(t) {
+  if (t.passed) return `<span class="pill good" title="сдана ${fmtDay(t.passedAt)}, засчитывается ${t.validDays} дней">сдана · ${Math.round(t.score * 100)}%</span>`;
+  if (t.expired) return '<span class="pill warn">истекла — пересдать</span>';
+  if (t.attempts) return `<span class="pill bad">не сдана · ${Math.round(t.lastScore * 100)}%</span>`;
+  if (t.hasLesson) return '<span class="pill info">урок готов</span>';
+  return '<span class="pill neutral">нет урока</span>';
+}
+
+function topicsSection(d) {
+  const T = d.topics;
+  const j = d.jobs.topics;
+  const busy = jobBusy(j);
+  const head = `<h3 class="st-h">Углубиться в темы${T ? ` · сдано ${T.passed}/${T.total}` : ''}
+    ${T && !busy ? '<button type="button" class="link-btn inline" id="tpGen">пересобрать темы</button>' : ''}</h3>`;
+  if (!T) {
+    return `<section class="iv-sec topics">${head}${busy || j?.state === 'error' ? jobBlock(j) : ''}
+      ${!busy ? `<div class="row"><button type="button" class="primary small" id="tpGen">Углубиться в темы</button>
+        <span class="hint" style="margin:0">4–8 тем, где твоё CV пересекается с вакансией: урок (EN / RU), видео и тест.
+        Список ≈ $0.002; урок создаётся при первом открытии темы (агент с поиском, ≈ $0.3–0.5); тест ≈ $0.003.</span></div>` : ''}</section>`;
+  }
+  const ready = T.passed === T.total;
+  const title = (t) => (topicLang === 'ru' ? t.title_ru : t.title_en) || t.title_en;
+  return `<section class="iv-sec topics">${head}${busy || j?.state === 'error' ? jobBlock(j) : ''}
+    <div class="banner ${ready ? 'good' : 'info'}" style="margin:0 0 8px"><p style="margin:0">${ready
+      ? '<strong>✓ Готов к интервью:</strong> все темы сданы.'
+      : `Готов к интервью — когда сданы все темы (осталось ${T.total - T.passed}). Тема сдаётся тестом от 80%; сданная засчитывается во всех вакансиях ${T.list[0]?.validDays || 90} дней.`}</p></div>
+    <ul class="tp-list">${T.list.map((t) => `<li class="tp-row ${openTopic === t.slug ? 'open' : ''}">
+      <div class="tp-main"><button type="button" class="link-btn tp-title" data-topic="${esc(t.slug)}">${esc(title(t))}</button> ${topicPill(t)}
+        ${t.priority === 'high' ? '<span class="chip">главная</span>' : ''}</div>
+      <div class="muted small">${t.why.cv_line ? `CV: ${esc(t.why.cv_line)}` : ''}${t.why.cv_line && t.why.requirement ? ' · ' : ''}${t.why.requirement ? `вакансия: ${esc(t.why.requirement)}` : ''}</div>
+      ${openTopic === t.slug ? '<div id="topicPanel" class="topic-panel"><p class="muted small"><span class="spin"></span>Загружаю урок…</p></div>' : ''}
+    </li>`).join('')}</ul>
+    ${d.topics.cv === 'master' ? '<p class="muted small" style="margin:6px 0 0">Темы собраны по Master CV — адаптированного CV ещё нет.</p>' : ''}
+  </section>`;
+}
+
+function renderTopic(d, t, data) {
+  const jl = topicJob(d, 'lesson', t.slug), jv = topicJob(d, 'lessonvideo', t.slug), jtr = topicJob(d, 'translate', t.slug), jt = topicJob(d, 'topictest', t.slug);
+  const st = data.status;
+  if (!st.hasLesson) {
+    return jobBusy(jl) || jl?.state === 'error' ? jobBlock(jl)
+      : `<div class="row"><button type="button" class="primary small" id="tpLesson">Создать урок</button>
+        <span class="hint" style="margin:0">Агент ищет материалы и видео и пишет урок на английском: ≈ $0.3–0.5, 1–3 минуты.</span></div>`;
+  }
+  const m = data.meta || {};
+  const v = m.video;
+  const res = topicResult?.slug === t.slug ? topicResult : null;
+  const failed = res ? !res.passed : st.attempts && !st.passed;
+  const langBar = `<div class="seg" role="group" aria-label="Язык урока">
+      <button type="button" data-tlang="en" aria-pressed="${data.lang === 'en'}">EN</button>
+      <button type="button" data-tlang="ru" aria-pressed="${data.lang === 'ru'}" ${jobBusy(jtr) ? 'disabled' : ''}>${st.hasRu ? 'RU' : 'RU · перевести'}</button></div>`;
+  const test = data.test;
+  return `<div class="row tp-bar">${langBar}
+      ${jobBusy(jtr) ? '<span class="muted small"><span class="spin"></span>перевожу…</span>' : jtr?.state === 'error' ? `<span class="error small">${esc(jtr.error)}</span>` : ''}
+      <span class="muted small">${!st.hasRu && data.lang === 'en' ? 'перевод ≈ $0.003, термины останутся английскими' : ''}</span>
+      ${jobBusy(jl) ? '<span class="muted small"><span class="spin"></span>пересоздаю урок…</span>' : ''}
+      <button type="button" class="link-btn inline right" id="tpClose">свернуть</button></div>
+    <article class="lesson">${data.html}</article>
+    <section class="tp-video"><h4>Видео</h4>
+      ${v ? `<div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${esc(ytId(v.url))}" title="${esc(v.title)}" loading="lazy"
+          allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+        <p class="small" style="margin:6px 0"><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
+          <span class="muted">${[v.channel, v.minutes ? `${v.minutes} мин` : ''].filter(Boolean).map(esc).join(' · ')}</span></p>
+        ${(v.key_points || []).length ? `<p class="muted small" style="margin:0">Ключевые мысли (по ${v.source === 'transcript' ? 'субтитрам' : 'описанию и главам'}) — по ним будут вопросы:</p>
+          <ul class="tight small">${v.key_points.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>`
+          : (v.chapters || []).length ? `<details class="more"><summary>Главы · ${v.chapters.length} — по ним и описанию будут 1–2 вопроса</summary><ul class="tight small">${v.chapters.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>`
+          : (v.description || '').length >= 200 ? '<p class="muted small" style="margin:0">1–2 вопроса теста — по описанию видео.</p>'
+          : '<p class="muted small" style="margin:0">У видео нет глав и описания — вопросы теста только по уроку.</p>'}`
+        : jobBusy(jv) ? '<p class="muted small"><span class="spin"></span>Ищу другое видео — первое не прошло проверку…</p>'
+        : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.</p>`}
+    </section>
+    ${(m.cards || []).length ? `<section><h4>Связь с твоим опытом</h4><ul class="tight small">${m.cards.map((c) => `<li><a href="#/cases/card/${enc(c.id)}">${esc(c.id)}</a> — ${esc(c.where || '')}</li>`).join('')}</ul></section>` : ''}
+    ${(m.sources || []).length ? `<details class="more"><summary>Источники · ${m.sources.length}</summary><ul class="tight small">${m.sources.map((x) => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a></li>`).join('')}</ul></details>` : ''}
+    <section class="tp-test"><h4>Тест</h4>
+      ${res ? `<div class="banner ${res.passed ? 'good' : 'warn'}"><p style="margin:0"><strong>${res.right} из ${res.total} · ${Math.round(res.score * 100)}%</strong> —
+          ${res.passed ? 'тема сдана.' : 'нужно от 80%. Перечитай разделы ниже и пересдай — вопросы будут новые.'}</p></div>
+        ${res.wrong.length ? `<ol class="tp-wrong">${res.wrong.map((w) => `<li><strong>${esc(w.q)}</strong>
+          <div class="small">Твой ответ: ${w.chosen != null ? esc(w.options[w.chosen]) : '—'} · верно: <strong>${esc(w.options[w.correct])}</strong></div>
+          <div class="muted small">${esc(w.explain)}${w.section ? ` · раздел «${esc(w.section)}»` : ''}</div></li>`).join('')}</ol>` : ''}` : ''}
+      ${test ? `<form id="tpForm" class="tp-form">${test.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}${q.from === 'video' ? ' <span class="chip">видео</span>' : ''}</legend>
+          ${q.options.map((o, k) => `<label class="tp-opt"><input type="radio" name="${esc(q.id)}" value="${k}" ${topicAnswers[q.id] === k ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}
+          <div class="row"><button type="submit" class="primary small" id="tpSubmit">Проверить</button><span class="hint" style="margin:0" id="tpLeft"></span></div></form>`
+        : jobBusy(jt) || jt?.state === 'error' ? jobBlock(jt)
+        : `<div class="row"><button type="button" class="${st.passed ? 'small' : 'primary small'}" id="tpTest">${st.passed ? 'Пройти тест ещё раз' : failed ? 'Пересдать — новые вопросы' : 'Тема изучена → тест'}</button>
+          <span class="hint" style="margin:0">8 вопросов на языке урока (${data.lang === 'ru' ? 'RU' : 'EN'}), сдано от 7 верных (≥ 80%). Составляет Haiku, ≈ $0.003; проверяет приложение.</span></div>`}
+    </section>
+    <p class="muted small" style="margin:10px 0 0">Урок — общие знания по теме, не факты о тебе. <button type="button" class="link-btn inline" id="tpRelesson">пересоздать урок</button></p>`;
+}
+
+async function loadTopic(d) {
+  const box = $('#topicPanel');
+  if (!box || !openTopic) return;
+  const t = d.topics.list.find((x) => x.slug === openTopic);
+  let data;
+  try { data = await api(`/api/topics/${enc(openTopic)}?lang=${topicLang}`); } catch (e) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  if (!$('#topicPanel') || openTopic !== t.slug) return;
+  box.innerHTML = renderTopic(d, t, data);
+  bindTopic(d, t, data);
+  for (const k of TOPIC_JOBS) if (d.jobs[k]?.topic === t.slug) attachFeed(d.jobs[k]);
+}
+
+function bindTopic(d, t, data) {
+  const base = `/api/vacancies/${enc(d.name)}/topics/${enc(t.slug)}`;
+  $('#tpClose')?.addEventListener('click', () => { openTopic = null; loadDetail(); });
+  $('#tpLesson')?.addEventListener('click', () => startStep(`topics/${enc(t.slug)}/lesson`));
+  $('#tpRelesson')?.addEventListener('click', () => {
+    if (confirm('Пересоздать урок? Агент напишет его заново (≈ $0.3–0.5), перевод сбросится. Сданный тест останется в журнале.')) startStep(`topics/${enc(t.slug)}/lesson`);
+  });
+  $('#tpTest')?.addEventListener('click', () => { topicResult = null; topicAnswers = {}; startStep(`topics/${enc(t.slug)}/test`, { lang: topicLang }); });
+  document.querySelectorAll('[data-tlang]').forEach((b) => b.addEventListener('click', async () => {
+    topicLang = b.dataset.tlang;
+    try { localStorage.setItem('cvc-topic-lang', topicLang); } catch {}
+    if (topicLang === 'ru' && !data.status.hasRu) { await startStep(`topics/${enc(t.slug)}/translate`); return; }
+    loadDetail();
+  }));
+  const form = $('#tpForm');
+  if (!form) return;
+  const left = () => { const n = data.test.questions.filter((q) => topicAnswers[q.id] == null).length; $('#tpLeft').textContent = n ? `без ответа: ${n}` : ''; };
+  form.addEventListener('change', (e) => { if (e.target.name) topicAnswers[e.target.name] = Number(e.target.value); left(); });
+  left();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const missing = data.test.questions.filter((q) => topicAnswers[q.id] == null).length;
+    if (missing && !confirm(`Без ответа ${missing} — они засчитаются как неверные. Проверить?`)) return;
+    $('#tpSubmit').disabled = true;
+    try { topicResult = { slug: t.slug, ...(await api(`/api/topics/${enc(t.slug)}/submit`, { method: 'POST', body: { answers: topicAnswers } })) }; }
+    catch (err) { alert(err.message); $('#tpSubmit').disabled = false; return; }
+    topicAnswers = {};
+    await loadDetail();
+    $('#topicPanel')?.scrollIntoView({ block: 'start' });
+  });
+}
+
 function bindInterview(d) {
+  $('#tpGen')?.addEventListener('click', () => {
+    if (d.topics && !confirm('Пересобрать список тем? Сданные темы останутся сданными (библиотека общая).')) return;
+    openTopic = null;
+    startStep('topics');
+  });
+  document.querySelectorAll('[data-topic]').forEach((b) => b.addEventListener('click', () => {
+    openTopic = openTopic === b.dataset.topic ? null : b.dataset.topic;
+    topicResult = null;
+    loadDetail();
+  }));
+  if (d.topics && openTopic && !d.topics.list.some((x) => x.slug === openTopic)) openTopic = null;
+  loadTopic(d);
+  for (const k of ['topics', ...TOPIC_JOBS]) if (d.jobs[k]) attachFeed(d.jobs[k]);
   $('#ivPrep')?.addEventListener('click', () => {
     if (d.interview?.prep && !confirm('Подготовить заново? Текущая подготовка заменится; журнал тренировок сохранится.')) return;
     startStep('interview');
@@ -1783,7 +1943,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -2284,6 +2444,7 @@ function boardCard(i, st) {
   if (i.status === 'sent' && i.waiting?.daysSinceSent >= 1) {
     meta.push(`<span class="muted small" title="без ответа уйдёт в архив ${fmtDay(i.waiting.noReplyAt)}">ждёт ответа ${daysWord(i.waiting.daysSinceSent)}</span>`);
   }
+  if (i.topics) meta.push(`<span class="small ${i.topics.passed === i.topics.total ? 'good-text' : 'muted'}" title="темы подготовки к интервью сданы">темы ${i.topics.passed}/${i.topics.total}</span>`);
   const targets = Object.keys(MOVE_LABELS).filter((k) => k !== col);
   return `<article class="bcard" draggable="true" data-name="${esc(i.name)}">
     <div class="bc-top"><span class="company">${esc(i.company)}</span>${fit != null ? `<span class="mono small ${fit < FIT_THRESHOLD ? 'warn' : ''}">${fit}/10</span>` : ''}</div>
@@ -3618,6 +3779,9 @@ function renderProfile(pr, answers, canRevert, cal) {
         <label for="pfNoReply">Без ответа через</label>
         <div class="row"><input id="pfNoReply" type="number" min="1" max="90" step="1" style="width:90px" value="${pr.no_reply_days ?? 14}">
           <span class="hint" style="margin:0">дней после отправки заявка без ответа сама уходит в архив «Без ответа»</span></div>
+        <label for="pfTopicDays">Тема сдана на</label>
+        <div class="row"><input id="pfTopicDays" type="number" min="7" max="365" step="1" style="width:90px" value="${pr.topic_valid_days ?? 90}">
+          <span class="hint" style="margin:0">дней сданная тема подготовки к интервью засчитывается во всех вакансиях, потом — пересдать</span></div>
         <label for="pfSal">Минимальная зарплата</label>
         <div class="row"><input id="pfSal" type="number" min="0" step="any" style="width:160px" value="${ms.amount ?? ''}" placeholder="не задана">
           <select id="pfCur" style="width:auto">${['EUR', 'PLN', 'USD', 'GBP'].map((c) => `<option ${ms.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
@@ -3697,7 +3861,7 @@ function bindProfile(answers) {
       relocation: form.querySelector('input[name="relocation"]:checked')?.value,
       onsite_locations: listOf($('#pfLoc').value), languages: listOf($('#pfLang').value),
       min_salary: { amount: $('#pfSal').value, currency: $('#pfCur').value, period: $('#pfPer').value },
-      no_reply_days: $('#pfNoReply').value, exclude_us_only: $('#pfNoUS').checked,
+      no_reply_days: $('#pfNoReply').value, topic_valid_days: $('#pfTopicDays').value, exclude_us_only: $('#pfNoUS').checked,
     };
     $('#pfSave').disabled = true;
     $('#pfSave').textContent = 'Проверяю калибровку…';

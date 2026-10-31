@@ -764,3 +764,30 @@ ul.bucket li.miss { color: var(--muted); }
 .apply-msg .msg-meta { gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .apply-msg .inline-details { display: inline-block; }
 .apply-msg .over { color: var(--bad); font-weight: 600; }
+
+/* W8 · углубиться в темы */
+.banner.info { background: var(--info-bg); color: var(--info); }
+.banner.good { background: var(--good-bg); color: var(--good); }
+.topics .tp-list { list-style: none; margin: 0; padding: 0; }
+.topics .tp-row { padding: 8px 0; border-top: 1px solid var(--line); }
+.topics .tp-row:first-child { border-top: 0; }
+.topics .tp-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topics .tp-title { font-weight: 600; text-align: left; }
+.topic-panel { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.topic-panel .tp-bar { gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.topic-panel .tp-bar .right { margin-left: auto; }
+.topic-panel h4 { margin: 14px 0 6px; font-size: 14px; }
+.lesson { line-height: 1.55; overflow-wrap: anywhere; }
+.lesson h1 { font-size: 20px; margin: 4px 0 8px; }
+.lesson h2 { font-size: 16px; margin: 16px 0 6px; }
+.lesson code { font-size: 13px; }
+.lesson table { border-collapse: collapse; display: block; overflow-x: auto; }
+.lesson td, .lesson th { border: 1px solid var(--line); padding: 4px 8px; }
+.tp-video .yt { position: relative; width: 100%; max-width: 560px; aspect-ratio: 16 / 9; }
+.tp-video .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 8px; }
+.tp-form fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+.tp-form legend { font-weight: 600; margin-bottom: 4px; }
+.tp-opt { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: 14px; cursor: pointer; }
+.tp-opt input { margin: 3px 0 0; width: auto; min-height: 0; flex: 0 0 auto; }
+.tp-opt span, .tp-opt { text-align: left; }
+.tp-wrong li { margin-bottom: 8px; }

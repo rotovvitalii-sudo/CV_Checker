@@ -19,6 +19,7 @@ const sites = require('./sites');
 const cases = require('./cases');
 const autofill = require('./autofill');
 const alive = require('./alive');
+const learning = require('./learning');
 const targets = require('./targets');
 const money = require('./money');
 const answerLib = require('./answer-lib');
@@ -79,7 +80,7 @@ app.get('/api/vacancies', wrap(async (req, res) => {
     const info = store.vacancyInfo(n);
     return { ...withJobs(info), master: matches[n] || null, warm: warm.some((c) => targets.companyMatches(c, info.company)),
       salaryMismatch: money.mismatch(info.submittedAnswers, m), minimum: brief.minimum(info.fit, store.outDir(n), MASTER_BASE),
-      hasApplyMsg: fs.existsSync(path.join(store.outDir(n), '06-apply-message.json')) };
+      hasApplyMsg: fs.existsSync(path.join(store.outDir(n), '06-apply-message.json')), topics: learning.readiness(store.outDir(n)) };
   });
   store.save();
   res.json({ items, inbox: inboxList(), statuses: store.STATUSES, masterVersion: master.activeVersion() });
@@ -101,6 +102,7 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.letterFacts = info.letter?.mode === 'generated' ? readGeneratedTrace(name) : null;
   info.cardRefs = cardRefs(name, info);
   info.interview = readInterview(name);
+  info.topics = topicsInfo(name);
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
@@ -690,6 +692,185 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
   });
   attach(name, 'interview', job);
   res.json({ jobId: job.id });
+}));
+
+// ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
+// Темы вакансии — один ход Haiku; урок — агент с поиском (при первом открытии темы); перевод и тест — один ход Haiku;
+// проверка теста — сервер, верные ответы клиенту не уходят. Библиотека тем общая: knowledge-base/learning/.
+function topicsInfo(name) {
+  const t = learning.vacancyTopics(store.outDir(name));
+  if (!t) return null;
+  const list = t.topics.map((x) => ({ ...x, ...learning.status(x.slug), title_en: x.title_en, title_ru: x.title_ru }));
+  return { at: t.at, cv: t.cv, list, passed: list.filter((x) => x.passed).length, total: list.length };
+}
+const vacancyTopic = (name, slug) => learning.vacancyTopics(store.outDir(name))?.topics.find((x) => x.slug === slug) || null;
+const oneJSON = (t) => {
+  const s = String(t || ''), a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b < a) throw new Error('модель не вернула JSON');
+  return JSON.parse(s.slice(a, b + 1));
+};
+
+// Видео существует и это то самое: oEmbed отвечает, название похоже на названное агентом
+async function checkVideo(v) {
+  if (!v?.url || !/^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]{6,}/.test(v.url)) return { ok: false, why: 'ссылка не на видео YouTube' };
+  try {
+    const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(v.url)}&format=json`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return { ok: false, why: `oEmbed ${r.status} — видео нет или оно закрыто` };
+    const o = await r.json();
+    const words = (x) => new Set(String(x || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+    const A = words(o.title), B = words(v.title);
+    const common = [...B].filter((w) => A.has(w)).length;
+    if (B.size && common / Math.min(A.size || 1, B.size) < 0.5) return { ok: false, why: `название не совпадает: «${o.title}»` };
+    return { ok: true, title: o.title, channel: o.author_name, details: await videoDetails(v.url) };
+  } catch (e) { return { ok: false, why: `oEmbed недоступен: ${e.message}` }; }
+}
+
+app.post('/api/vacancies/:name/topics', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (busy(a, 'topics')) return res.status(409).json({ error: 'уже идёт' });
+  const dir = store.outDir(name);
+  const cv = applyMsgCv(name);
+  const vac = readText(path.join(store.VACANCIES, `${name}.md`));
+  if (!vac && !a.fit?.current_task) return res.status(400).json({ error: NO_TEXT });
+  fs.mkdirSync(dir, { recursive: true });
+  const job = runJob({
+    kind: 'topics', target: name, system: prompts.TOPICS_SYSTEM,
+    prompt: prompts.interviewTopics({ cv: cv.text, fit: a.fit, requirements: readText(path.join(dir, '01-requirements.md')) || vac, library: learning.library() }),
+    logFile: path.join(dir, '08-topics.log'),
+    onDone: async (j) => {
+      const topics = learning.normTopics(oneJSON(j.finalText));
+      if (topics.length < 2) throw new Error(`тем слишком мало (${topics.length})`);
+      fs.writeFileSync(learning.topicsFile(dir), `${JSON.stringify({ at: new Date().toISOString(), cv: cv.cv, topics }, null, 2)}\n`);
+    },
+  });
+  attach(name, 'topics', job);
+  res.json({ jobId: job.id });
+}));
+
+// Описание, длительность и главы — со страницы видео (агенту YouTube их не отдаёт); по ним вопросы теста о видео
+async function videoDetails(url) {
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-US,en' }, signal: AbortSignal.timeout(15000) });
+    const h = await r.text();
+    const str = (re) => { const m = h.match(re); try { return m ? JSON.parse(`"${m[1]}"`) : ''; } catch { return ''; } };
+    const len = Number((h.match(/"lengthSeconds":"(\d+)"/) || [])[1]) || 0;
+    const chapters = [...h.matchAll(/"chapterRenderer":\{"title":\{"simpleText":"((?:[^"\\]|\\.)*)"/g)].map((m) => { try { return JSON.parse(`"${m[1]}"`); } catch { return ''; } })
+      .filter(Boolean);
+    return { description: str(/"shortDescription":"((?:[^"\\]|\\.)*)"/).slice(0, 2500), minutes: len ? Math.max(1, Math.round(len / 60)) : null,
+      chapters: [...new Set(chapters)].slice(0, 30) };
+  } catch { return {}; }
+}
+
+function writeVideo(t, m, chk, retrying) {
+  const next = { ...m, slug: t.slug, title_en: m.title_en || t.title_en, title_ru: m.title_ru || t.title_ru,
+    video: chk.ok ? { ...m.video, title: chk.title, channel: m.video.channel || chk.channel, ...chk.details,
+      minutes: chk.details?.minutes || m.video.minutes || null } : null,
+    video_status: chk.ok ? 'ok' : retrying ? `ищу другое видео (${chk.why})` : chk.why, checked: new Date().toISOString() };
+  if (!chk.ok && m.video) next.video_rejected = [...(m.video_rejected || []), { url: m.video.url, why: chk.why }];
+  fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
+}
+
+app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const t = vacancyTopic(name, req.params.slug);
+  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
+  const a = store.app(name);
+  if (busy(a, 'lesson')) return res.status(409).json({ error: 'урок по другой теме ещё готовится — дождись его' });
+  const d = learning.dir(t.slug);
+  fs.mkdirSync(d, { recursive: true });
+  const lessonFile = path.join(d, 'lesson.en.md'), metaFile = path.join(d, 'meta.json');
+  const before = fs.existsSync(lessonFile) ? fs.statSync(lessonFile).mtimeMs : 0;
+  const job = runJob({
+    kind: 'lesson', target: name,
+    prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: name, why: t.why }),
+    logFile: path.join(d, 'agent-lesson.log'),
+    onDone: async () => {
+      if (!fs.existsSync(lessonFile) || fs.statSync(lessonFile).mtimeMs === before) throw new Error('агент не записал урок');
+      fs.rmSync(path.join(d, 'lesson.ru.md'), { force: true }); // перевод старого урока больше не верен
+      fs.rmSync(path.join(d, 'test-current.json'), { force: true });
+      const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+      const chk = m.video ? await checkVideo(m.video) : { ok: false, why: 'видео не найдено' };
+      writeVideo(t, m, chk, !chk.ok && !!m.video);
+      // Ссылка не прошла — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
+      if (!chk.ok && m.video) {
+        const j2 = runJob({ kind: 'lessonvideo', target: name, prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad: chk.why }),
+          logFile: path.join(d, 'agent-video.log'),
+          onDone: async () => {
+            const m2 = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+            writeVideo(t, m2, m2.video ? await checkVideo(m2.video) : { ok: false, why: 'видео не найдено' }, false);
+          } });
+        j2.topic = t.slug;
+        attach(name, 'lessonvideo', j2);
+      }
+    },
+  });
+  job.topic = t.slug;
+  attach(name, 'lesson', job);
+  res.json({ jobId: job.id });
+}));
+
+app.post('/api/vacancies/:name/topics/:slug/translate', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const t = vacancyTopic(name, req.params.slug);
+  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
+  if (busy(store.app(name), 'translate')) return res.status(409).json({ error: 'уже идёт' });
+  const text = learning.lesson(t.slug, 'en');
+  if (!text) return res.status(400).json({ error: 'урока ещё нет' });
+  const job = runJob({
+    kind: 'translate', target: name, system: prompts.TRANSLATE_SYSTEM, prompt: prompts.topicTranslate({ lessonText: text }),
+    logFile: path.join(learning.dir(t.slug), 'translate.log'),
+    onDone: async (j) => {
+      const md = String(j.finalText || '').trim().replace(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/, '$1');
+      if (md.length < text.length * 0.5) throw new Error('перевод короче половины урока');
+      fs.writeFileSync(path.join(learning.dir(t.slug), 'lesson.ru.md'), `${md}\n`);
+    },
+  });
+  job.topic = t.slug;
+  attach(name, 'translate', job);
+  res.json({ jobId: job.id });
+}));
+
+app.post('/api/vacancies/:name/topics/:slug/test', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const t = vacancyTopic(name, req.params.slug);
+  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
+  if (busy(store.app(name), 'topictest')) return res.status(409).json({ error: 'тест уже составляется' });
+  const text = learning.lesson(t.slug, 'en');
+  if (!text) return res.status(400).json({ error: 'сначала урок' });
+  const job = runJob({
+    kind: 'topictest', target: name, system: prompts.TEST_SYSTEM,
+    prompt: prompts.topicTest({ lessonText: text, video: learning.meta(t.slug)?.video, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
+      lang: req.body?.lang === 'ru' ? 'ru' : 'en' }),
+    logFile: path.join(learning.dir(t.slug), 'test.log'),
+    onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText))),
+  });
+  job.topic = t.slug;
+  attach(name, 'topictest', job);
+  res.json({ jobId: job.id });
+}));
+
+// Урок пишет агент по материалам из интернета — в разметке оставляем только текст, без скриптов и встраиваний
+const safeHtml = (h) => String(h).replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1>/gi, '').replace(/<(script|style|iframe|object|embed|form|input)[^>]*>/gi, '')
+  .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/(href|src)\s*=\s*"\s*javascript:[^"]*"/gi, '$1="#"')
+  .replace(/<a /g, '<a target="_blank" rel="noopener" ');
+
+app.get('/api/topics/:slug', wrap(async (req, res) => {
+  const slug = String(req.params.slug);
+  if (!learning.slugOk(slug)) return res.status(400).json({ error: 'плохой slug' });
+  const lang = req.query.lang === 'ru' && learning.lesson(slug, 'ru') ? 'ru' : 'en';
+  const md = learning.lesson(slug, lang);
+  const m = learning.meta(slug);
+  res.json({ status: learning.status(slug), meta: m ? { video: m.video, video_status: m.video_status, sources: m.sources || [], cards: m.cards || [] } : null,
+    lang, html: md ? safeHtml(marked(md)) : '', test: learning.publicTest(slug), last: learning.attempts(slug).slice(-1)[0] || null });
+}));
+
+app.post('/api/topics/:slug/submit', wrap(async (req, res) => {
+  const slug = String(req.params.slug);
+  if (!learning.slugOk(slug)) return res.status(400).json({ error: 'плохой slug' });
+  const r = learning.grade(slug, req.body?.answers || {});
+  if (r.passed) events.add({ type: 'topic_passed', title: `Тема сдана: ${Math.round(r.score * 100)}%`, text: learning.meta(slug)?.title_en || slug });
+  res.json(r);
 }));
 
 // Тренажёр: вопрос + твой ответ (голосом или текстом) → оценка 1–4, чего не хватило, уточнения. Без похвалы и переписывания
@@ -2030,6 +2211,11 @@ app.put('/api/profile', wrap(async (req, res) => {
     const n = Number(b.no_reply_days);
     if (!(n >= 1 && n <= 90)) return res.status(400).json({ error: '«Без ответа через» — от 1 до 90 дней' });
     next.no_reply_days = Math.round(n);
+  }
+  if (b.topic_valid_days !== undefined) { // W8: сколько дней сданная тема считается сданной
+    const n = Number(b.topic_valid_days);
+    if (!(n >= 7 && n <= 365)) return res.status(400).json({ error: '«Тема сдана на» — от 7 до 365 дней' });
+    next.topic_valid_days = Math.round(n);
   }
   if (b.min_salary !== undefined) {
     const amount = b.min_salary.amount === '' || b.min_salary.amount == null ? null : Number(b.min_salary.amount);

@@ -112,6 +112,8 @@ def api(base):
     for l in cases["letters"]:
         code, _, _ = get(base, f"/api/cases/raw/{q(l['file'])}")
         ok(code == 200, f"надиктовка {l['file']} → {code}")
+    code, _, _ = get(base, "/api/topics/..%2Fetc")
+    ok(code in (400, 404), f"тема с плохим slug → {code}")
     items = json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:
@@ -127,6 +129,12 @@ def api(base):
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")
+            # W8: темы для интервью — статус каждой темы читается, правильные ответы теста наружу не уходят
+            for t in ((d.get("topics") or {}).get("list") or []):
+                code, _, body = get(base, f"/api/topics/{q(t['slug'])}")
+                if ok(code == 200, f"тема {t['slug']} → {code}"):
+                    tp = json.loads(body)
+                    ok(not any("answer" in x for x in ((tp.get("test") or {}).get("questions") or [])), f"тема {t['slug']}: в тесте видны ответы")
         # C11: состояние формы на сайте — только чтение (разбор формы тест не запускает)
         code, _, body = get(base, f"/api/vacancies/{q(it['name'])}/form")
         if ok(code == 200, f"форма {it['name']} → {code}"):

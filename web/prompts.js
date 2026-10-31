@@ -377,4 +377,86 @@ ${error ? `\nПредыдущий вариант не прошёл провер�
 Верни JSON: {"message": "текст сообщения", "facts": [{"text": "факт из сообщения", "source": "CV"}]}`;
 }
 
-module.exports = { applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
+// ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
+const TOPICS_SYSTEM = 'Ты помогаешь кандидату подготовиться к собеседованию: выбираешь темы для освежения знаний. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function interviewTopics({ cv, fit, requirements, library }) {
+  const b = fit?.buckets || {};
+  const req = [...(b.minimum || []), ...(b.desired || [])].map((x) => `- ${x.req}${x.kw ? ` (${x.kw})` : ''}`).join('\n') || requirements.slice(0, 4000);
+  return `Требования вакансии (минимум и желательное):
+${req}
+${fit?.current_task ? `\nГлавная задача роли: ${fit.current_task}` : ''}${(fit?.what_you_do || []).length ? `\nЧто делать: ${fit.what_you_do.join('; ')}` : ''}${fit?.pain ? `\nЧто болит: ${fit.pain}` : ''}
+
+CV кандидата:
+"""
+${cv.slice(0, 8000)}
+"""
+
+Темы, которые уже есть в библиотеке кандидата (если тема по смыслу совпадает — верни ровно этот slug):
+${library.map((t) => `- ${t.slug}: ${t.title_en}`).join('\n') || '(пусто)'}
+
+Выбери 4–8 тем для освежения знаний перед интервью — там, где пункт CV пересекается с требованием вакансии
+(например, CV: «increased activation by 38%» + вакансия: «own activation» → тема «User activation in SaaS»).
+Тема — предметная область, о которой спросят на интервью (метрики, подходы, лексика), а не навык вообще («communication») и не компания.
+Сначала главная задача роли и минимум требований. Не дроби одну область на несколько тем.
+
+Верни JSON: {"topics": [{"slug": "kebab-case-по-английски", "title_en": "…", "title_ru": "…",
+"why": {"cv_line": "строка или пункт CV, коротко", "requirement": "требование вакансии, коротко по-русски"}, "priority": "high|medium|low"}]}`;
+}
+
+function topicLesson({ slug, title_en, title_ru, vacancy, why }) {
+  return `${BACKGROUND}
+
+Задача: скил topic-lesson (\`.claude/skills/topic-lesson/SKILL.md\`), режим приложения.
+Тема: slug \`${slug}\`, «${title_en}» / «${title_ru}».
+Контекст (для акцентов, не для фактов о кандидате): вакансия «${vacancy}»${why?.requirement ? `, требование: ${why.requirement}` : ''}${why?.cv_line ? `, строка CV: ${why.cv_line}` : ''}.
+Запиши \`knowledge-base/learning/${slug}/lesson.en.md\` и \`knowledge-base/learning/${slug}/meta.json\` по схеме скила.`;
+}
+
+function topicVideo({ slug, title_en, bad }) {
+  return `${BACKGROUND}
+
+Задача: скил topic-lesson (\`.claude/skills/topic-lesson/SKILL.md\`), режим «только видео», тема \`${slug}\` «${title_en}».
+Видео из \`knowledge-base/learning/${slug}/meta.json\` не прошло проверку${bad ? ` (${bad})` : ''}. Найди другое, проверь через oEmbed
+и обнови в meta.json только поле video (или null, если не нашлось); ссылки из \`video_rejected\` не предлагай. Урок не трогай.`;
+}
+
+const TEST_SYSTEM = 'Ты составляешь тест по учебному материалу для подготовки к собеседованию. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function topicTest({ lessonText, video, past, n, lang = 'en' }) {
+  const L = lang === 'ru' ? 'на русском (термины — по-английски, как в уроке)' : 'на английском (English only)';
+  // Материал видео: ключевые мысли агента, иначе главы и описание со страницы (если там есть содержание)
+  const vmat = video?.key_points?.length ? video.key_points.map((k) => `- ${k}`).join('\n')
+    : [(video?.chapters || []).length ? `Главы: ${video.chapters.join('; ')}` : '', (video?.description || '').length >= 200 ? `Описание:\n${video.description}` : '']
+      .filter(Boolean).join('\n');
+  const vq = vmat ? Math.max(1, Math.round(n * 0.2)) : 0;
+  return `Урок:
+"""
+${lessonText.slice(0, 14000)}
+"""
+${vq ? `\nМатериал видео «${video.title}» (${video.key_points?.length ? 'ключевые мысли' : 'главы и описание со страницы'}):\n${vmat}\n` : ''}
+Составь тест из ${n} вопросов ${L} — вопросы и варианты ответов целиком на этом языке: ${n - vq} — по уроку${vq ? `, ${vq} — по материалу видео (только то, что в нём написано; рекламу и ссылки не спрашивай)` : ''}.
+Каждый вопрос — выбор из 4 вариантов, ровно один верный; неверные — правдоподобные, не абсурдные. Проверяй понимание
+(метрика, формула, когда применять подход, что хотят услышать на интервью, термин), а не память на формулировки.
+Ответ должен однозначно следовать из материала выше — ничего сверх него. Не пиши «по уроку» / «according to the lesson» — спрашивай о предмете.
+${past.length ? `\nЭти вопросы уже были — не повторяй их и не перефразируй:\n${past.map((q) => `- ${q}`).join('\n')}\n` : ''}
+Верни JSON: {"questions": [{"q": "…", "options": ["…", "…", "…", "…"], "answer": 0-3,
+"explain": "почему верно — одна фраза по-русски", "section": "заголовок раздела урока (## …) или Video", "from": "lesson|video"}]}`;
+}
+
+const TRANSLATE_SYSTEM = 'Ты переводишь учебный текст с английского на русский. Возвращаешь только переведённый markdown, без пояснений.';
+
+function topicTranslate({ lessonText }) {
+  return `Переведи урок на русский язык — живо и просто, как объяснял бы коллега.
+Правила: структура markdown и заголовки разделов сохраняются (заголовки переведи, а в скобках оставь английский оригинал, например
+«## Ключевые метрики и формулы (Key metrics and formulas)»); профессиональные термины оставляй по-английски при первом упоминании
+с русским пояснением в скобках; формулы не переводи; раздел Glossary — термины по-английски, объяснения по-русски;
+вопросы из раздела «How interviewers ask about it» — по-английски (так их зададут), пояснения — по-русски.
+
+"""
+${lessonText}
+"""`;
+}
+
+module.exports = { interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+  applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
