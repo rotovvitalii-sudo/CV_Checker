@@ -20,6 +20,7 @@ const cases = require('./cases');
 const autofill = require('./autofill');
 const alive = require('./alive');
 const learning = require('./learning');
+const insights = require('./insights');
 const targets = require('./targets');
 const money = require('./money');
 const answerLib = require('./answer-lib');
@@ -645,6 +646,88 @@ app.delete('/api/job-sites/:id', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------- C12 · инсайты под вакансию (docs/specs/34-insights-base.md) ----------
+// Без агента: ранжируем по тегам (темы W8, ключи вакансии) и словам требований; в промпт — до 5 близких
+const insightForPrompt = (i) => ({ id: i.id, title: i.title, essence: i.essence.replace(/\n+/g, ' ').replace(/^- /, '').replace(/ - /g, '; '), en: i.en,
+  sourceLabel: `${insights.SOURCE_TYPES[i.source.type] || ''}${i.source.title ? `: ${i.source.title}` : ''}` });
+function vacancyInsights(name) {
+  const f = store.app(name).fit || {};
+  const b = f.buckets || {};
+  const topics = learning.vacancyTopics(store.outDir(name))?.topics || [];
+  let kw = {};
+  try { kw = JSON.parse(fs.readFileSync(path.join(store.outDir(name), '01-keywords.json'), 'utf8')); } catch {}
+  const keys = [...(kw.must || []), ...(kw.nice || [])].map((k) => String(k).split('|')[0]);
+  const text = [f.current_task, f.pain, ...(f.what_you_do || []), ...['minimum', 'desired'].flatMap((k) => (b[k] || []).map((x) => `${x.req} ${x.kw}`)),
+    ...topics.map((t) => t.title_en), ...keys].filter(Boolean).join(' ');
+  return insights.rank({ text, tags: [...topics.map((t) => t.slug), ...keys] }).map(insightForPrompt);
+}
+// Какие инсайты агент реально использовал — по ссылкам insight:<id> / insights/<id>.md в его файлах
+function usedInsightIds(value) {
+  const txt = typeof value === 'string' ? value : JSON.stringify(value || '');
+  return [...new Set([...txt.matchAll(/insights?[:/](\d{4}-\d{2}-\d{2}-[a-z0-9-]{2,60})/g)].map((m) => m[1].replace(/-+$/, '')))].filter((id) => insights.idOk(id));
+}
+
+// Разбор надиктовки — один ход Haiku; черновик (текст, источник, разбор) живёт на сервере, пока кандидат не сохранит
+const INSIGHT_DRAFT = path.join(ROOT, 'web', 'data', 'insight-draft.json');
+const readDraft = () => { try { return JSON.parse(fs.readFileSync(INSIGHT_DRAFT, 'utf8')); } catch { return null; } };
+const writeDraft = (d) => { if (d) fs.writeFileSync(INSIGHT_DRAFT, JSON.stringify(d, null, 2)); else fs.rmSync(INSIGHT_DRAFT, { force: true }); };
+function insightDraftView() {
+  const d = readDraft();
+  if (!d) return null;
+  const j = d.jobId && jobs.get(d.jobId);
+  return { ...d, job: j ? publicJob(j) : null };
+}
+
+app.get('/api/insights', wrap(async (req, res) => {
+  res.json({ items: insights.list(), tags: insights.allTags(), sourceTypes: insights.SOURCE_TYPES, draft: insightDraftView() });
+}));
+
+app.post('/api/insights/parse', agentReady, wrap(async (req, res) => {
+  const text = String(req.body?.text || '').trim();
+  if (text.split(/\s+/).length < 5) return res.status(400).json({ error: 'надиктуй хотя бы пару предложений' });
+  const cur = insightDraftView();
+  if (cur?.job && ['running', 'queued'].includes(cur.job.state)) return res.status(409).json({ error: 'предыдущий инсайт ещё разбирается' });
+  const source = insights.cleanSource(req.body?.source || {});
+  const topics = learning.library().map((t) => t.slug);
+  const job = runJob({
+    kind: 'insight', target: 'insights', system: prompts.INSIGHT_SYSTEM,
+    prompt: prompts.insightParse({ text, source, tags: insights.allTags(), topics }),
+    logFile: path.join(ROOT, 'web', 'data', 'insight-parse.log'),
+    onDone: async (j) => {
+      const r = oneJSON(j.finalText);
+      const d = readDraft();
+      if (d?.jobId !== j.id) return; // черновик уже сохранили или отменили
+      writeDraft({ ...d, parsed: { title: String(r.title || '').trim(), slug: String(r.slug || ''), essence: String(r.essence || '').trim(),
+        en: String(r.en || '').trim(), tags: Array.isArray(r.tags) ? r.tags.slice(0, 8) : [], looks_like_case: !!r.looks_like_case,
+        case_hint: String(r.case_hint || ''), multiple: !!r.multiple, parts: Array.isArray(r.parts) ? r.parts.slice(0, 5) : [] } });
+    },
+  });
+  writeDraft({ text, source, parsed: null, jobId: job.id, at: new Date().toISOString() });
+  res.json({ jobId: job.id });
+}));
+
+app.delete('/api/insights/draft', wrap(async (req, res) => { writeDraft(null); res.json({ ok: true }); }));
+
+app.post('/api/insights', wrap(async (req, res) => {
+  const b = req.body || {};
+  const d = readDraft();
+  const ins = insights.create({ raw: b.raw ?? d?.text ?? '', source: b.source || d?.source, title: b.title, essence: b.essence, en: b.en,
+    tags: b.tags, slug: b.slug || d?.parsed?.slug, looks_like_case: b.looks_like_case ?? d?.parsed?.looks_like_case });
+  writeDraft(null);
+  res.json(ins);
+}));
+
+app.patch('/api/insights/:id', wrap(async (req, res) => {
+  if (!insights.idOk(req.params.id)) return res.status(400).json({ error: 'плохой id' });
+  res.json(insights.update(req.params.id, req.body || {}));
+}));
+
+app.delete('/api/insights/:id', wrap(async (req, res) => {
+  if (!insights.idOk(req.params.id)) return res.status(400).json({ error: 'плохой id' });
+  insights.remove(req.params.id);
+  res.json({ ok: true });
+}));
+
 // ---------- подготовка к собеседованию (W5, docs/specs/27-interview-prep.md) ----------
 
 const STORIES = path.join(ROOT, 'knowledge-base', 'stories.json');
@@ -682,12 +765,13 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
   const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
   const job = runJob({
     kind: 'interview', target: name,
-    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit }),
+    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit, insights: vacancyInsights(name) }),
     logFile: path.join(dir, 'agent-interview.log'),
     onDone: async () => {
       if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент не записал 07-interview.json');
       const prep = JSON.parse(fs.readFileSync(f, 'utf8'));
       mergeStories(prep.stories, name);
+      insights.markUsed((prep.insights_used || []).filter(insights.idOk), name, 'interview');
     },
   });
   attach(name, 'interview', job);
@@ -862,7 +946,8 @@ app.get('/api/topics/:slug', wrap(async (req, res) => {
   const md = learning.lesson(slug, lang);
   const m = learning.meta(slug);
   res.json({ status: learning.status(slug), meta: m ? { video: m.video, video_status: m.video_status, sources: m.sources || [], cards: m.cards || [] } : null,
-    lang, html: md ? safeHtml(marked(md)) : '', test: learning.publicTest(slug), last: learning.attempts(slug).slice(-1)[0] || null });
+    lang, html: md ? safeHtml(marked(md)) : '', test: learning.publicTest(slug), last: learning.attempts(slug).slice(-1)[0] || null,
+    insights: insights.rank({ text: `${m?.title_en || ''} ${slug.replace(/-/g, ' ')}`, tags: [slug] }, 5, { loose: true }) });
 }));
 
 app.post('/api/topics/:slug/submit', wrap(async (req, res) => {
@@ -1374,7 +1459,7 @@ app.get('/api/cases', wrap(async (req, res) => {
     drafts: cases.drafts().map((m) => draftView(m.id)),
     suggestions: sug.filter((s) => s.state === 'new'), suggestionsDone: sug.filter((s) => s.state !== 'new').length,
     gaps: await gapSummary(), newDictation: cases.newDictation(), voice: voiceStatus(),
-    scanJob: j ? publicJob(j) : null,
+    scanJob: j ? publicJob(j) : null, insightsCount: insights.list().length,
   });
 }));
 
@@ -1648,12 +1733,13 @@ app.post('/api/vacancies/:name/tailor', agentReady, wrap(async (req, res) => {
   const baseVersion = master.activeVersion();
   const job = runJob({
     kind: 'tailor', target: name,
-    prompt: prompts.tailor({ name, fit: store.app(name).fit }),
+    prompt: prompts.tailor({ name, fit: store.app(name).fit, insights: vacancyInsights(name) }),
     logFile: path.join(store.outDir(name), 'agent-tailor.log'),
     onDone: async () => {
       if (!fs.existsSync(path.join(store.outDir(name), 'CV.docx'))) throw new Error('агент закончил, но CV.docx не появился');
       a.baseVersion = baseVersion;
       await store.cvMetrics(name, true);
+      try { insights.markUsed(usedInsightIds(fs.readFileSync(path.join(store.outDir(name), 'report.md'), 'utf8')), name, 'cv-report'); } catch { /* отчёта нет */ }
     },
   });
   attach(name, 'tailor', job);
@@ -1828,7 +1914,7 @@ app.post('/api/vacancies/:name/letter-generate', agentReady, wrap(async (req, re
   const before = fs.existsSync(letterPath) ? fs.statSync(letterPath).mtimeMs : 0;
   const job = runJob({
     kind: 'lettergen', target: name,
-    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE), fit: store.app(name).fit }),
+    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE), fit: store.app(name).fit, insights: vacancyInsights(name) }),
     logFile: path.join(dir, 'agent-lettergen.log'),
     onDone: async () => {
       if (!fs.existsSync(letterPath) || fs.statSync(letterPath).mtimeMs === before) throw new Error('агент закончил, но Cover Letter.md не обновился');
@@ -1838,6 +1924,7 @@ app.post('/api/vacancies/:name/letter-generate', agentReady, wrap(async (req, re
       try { s = JSON.parse(fs.readFileSync(summary, 'utf8')); } catch {}
       if (s.mode !== 'generated') fs.writeFileSync(summary, JSON.stringify({ ...s, mode: 'generated' }, null, 2));
       collectCardSuggestions(name, 'lettergen');
+      try { insights.markUsed(usedInsightIds(fs.readFileSync(path.join(dir, '04-generated-trace.json'), 'utf8')), name, 'letter'); } catch { /* трассировки нет */ }
       const m = await store.letterMetrics(name, true);
       buildLetterFiles(name, true); // C10: PDF и DOCX готовы к скачиванию сразу
       if (a.status === 'new' && m?.facts?.pass) store.setStatus(a, 'ready', { note: 'письмо сгенерировано' });
@@ -1942,13 +2029,14 @@ app.post('/api/vacancies/:name/answers', agentReady, wrap(async (req, res) => {
   const hasCV = fs.existsSync(path.join(dir, 'CV.md'));
   const job = runJob({
     kind: 'answers', target: name,
-    prompt: prompts.answers({ name, hasCV }),
+    prompt: prompts.answers({ name, hasCV, insights: vacancyInsights(name) }),
     logFile: path.join(dir, 'agent-answers.log'),
     onDone: async () => {
       const f = path.join(dir, '05-answers.json');
       if (!fs.existsSync(f)) throw new Error('агент закончил, но 05-answers.json не появился');
       const got = JSON.parse(fs.readFileSync(f, 'utf8'));
       if (hits.some(Boolean)) merge(got.questions || []);
+      insights.markUsed(usedInsightIds((got.questions || []).map((q) => q.sources)), name, 'answers');
     },
   });
   attach(name, 'answers', job);
@@ -1974,13 +2062,14 @@ app.post('/api/vacancies/:name/answers/:qi/redo', agentReady, wrap(async (req, r
   fs.rmSync(out, { force: true });
   const job = runJob({
     kind: 'answers', target: name,
-    prompt: prompts.answerRedo({ name, item, comment, out: path.relative(ROOT, out), hasCV: fs.existsSync(path.join(dir, 'CV.md')) }),
+    prompt: prompts.answerRedo({ name, item, comment, out: path.relative(ROOT, out), hasCV: fs.existsSync(path.join(dir, 'CV.md')), insights: vacancyInsights(name) }),
     logFile: path.join(dir, 'agent-answers.log'),
     onDone: async () => {
       let r;
       try { r = JSON.parse(fs.readFileSync(out, 'utf8')); } catch { throw new Error('агент не записал новый ответ'); }
       const cur = JSON.parse(fs.readFileSync(f, 'utf8'));
       cur.questions[qi] = { ...cur.questions[qi], ...r, q: item.q, limit: item.limit, library: undefined, redo: comment };
+      insights.markUsed(usedInsightIds(r.sources), name, 'answers');
       fs.writeFileSync(f, JSON.stringify(cur, null, 2));
       fs.writeFileSync(path.join(dir, '05-answers.md'), answerLib.toMd(`${store.vacancyInfo(name).role}, ${store.vacancyInfo(name).company}`, cur));
       fs.rmSync(out, { force: true });

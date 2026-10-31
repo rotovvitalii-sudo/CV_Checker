@@ -791,3 +791,15 @@ ul.bucket li.miss { color: var(--muted); }
 .tp-opt input { margin: 3px 0 0; width: auto; min-height: 0; flex: 0 0 auto; }
 .tp-opt span, .tp-opt { text-align: left; }
 .tp-wrong li { margin-bottom: 8px; }
+
+/* C12 · инсайты */
+.insight-form label, .insight label { display: block; font-size: 13px; color: var(--muted); margin: 6px 0; }
+.insight-form textarea, .insight textarea, .insight-form input, .insight input { width: 100%; margin-top: 2px; }
+.insight-form .ins-src { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.insights { display: flex; flex-direction: column; gap: 10px; }
+.insight .ins-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.insight h3 { margin: 0; font-size: 16px; }
+.insight .ins-essence { white-space: pre-line; }
+.insight .ins-en { margin: 6px 0 0; color: var(--muted); font-style: italic; }
+.insight .kchip { cursor: pointer; border: 0; }
+.link-btn.danger { color: var(--bad); }

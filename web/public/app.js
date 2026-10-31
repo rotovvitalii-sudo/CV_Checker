@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -1388,6 +1388,7 @@ function interviewBlock(d) {
     <section class="iv-sec"><h3 class="st-h">Рискованные вопросы</h3>
       <ul class="tight">${P.risky.map((r) => `<li><strong>${esc(r.q)}</strong><div class="muted small">${esc(r.why)}${r.hint ? ` · опора: ${esc(r.hint)}` : ''}</div></li>`).join('')}</ul></section>
     <section class="iv-sec"><h3 class="st-h">Вопросы к компании</h3><ul class="tight">${(P.ask || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ul></section>
+    ${(P.insights_used || []).length ? `<p class="muted small" style="margin:-4px 0 10px">Опора на твои инсайты: ${P.insights_used.map((id) => `<a href="#/cases/insights">${esc(id.replace(/^\d{4}-\d{2}-\d{2}-/, ''))}</a>`).join(', ')}</p>` : ''}
     ${topicsSection(d)}
     <section class="iv-sec trainer"><h3 class="st-h">Тренажёр — голосом, по одному вопросу до сильного ответа</h3>
       <p class="muted small" style="margin:0 0 8px">Интервьюер копает уточнениями и не хвалит; ответ за тебя не переписывает. На живом собеседовании AI-подсказки не используй.</p>
@@ -1460,10 +1461,12 @@ function topicsSection(d) {
 function renderTopic(d, t, data) {
   const jl = topicJob(d, 'lesson', t.slug), jv = topicJob(d, 'lessonvideo', t.slug), jtr = topicJob(d, 'translate', t.slug), jt = topicJob(d, 'topictest', t.slug);
   const st = data.status;
+  const insBlock = (data.insights || []).length ? `<section><h4>Твои инсайты по теме</h4><ul class="tight small">${data.insights.map((i) => `<li><strong>${esc(i.title)}</strong> — ${esc(i.essence.replace(/^- /gm, '').replace(/\n+/g, ' · '))}${i.en ? `<div class="muted">${esc(i.en)}</div>` : ''}</li>`).join('')}</ul>
+      <p class="muted small" style="margin:0"><a href="#/cases/insights">все инсайты</a></p></section>` : '';
   if (!st.hasLesson) {
-    return jobBusy(jl) || jl?.state === 'error' ? jobBlock(jl)
+    return (jobBusy(jl) || jl?.state === 'error' ? jobBlock(jl)
       : `<div class="row"><button type="button" class="primary small" id="tpLesson">Создать урок</button>
-        <span class="hint" style="margin:0">Агент ищет материалы и видео и пишет урок на английском: ≈ $0.3–0.5, 1–3 минуты.</span></div>`;
+        <span class="hint" style="margin:0">Агент ищет материалы и видео и пишет урок на английском: ≈ $0.3–0.5, 1–3 минуты.</span></div>`) + insBlock;
   }
   const m = data.meta || {};
   const v = m.video;
@@ -1492,6 +1495,7 @@ function renderTopic(d, t, data) {
         : jobBusy(jv) ? '<p class="muted small"><span class="spin"></span>Ищу другое видео — первое не прошло проверку…</p>'
         : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.</p>`}
     </section>
+    ${insBlock}
     ${(m.cards || []).length ? `<section><h4>Связь с твоим опытом</h4><ul class="tight small">${m.cards.map((c) => `<li><a href="#/cases/card/${enc(c.id)}">${esc(c.id)}</a> — ${esc(c.where || '')}</li>`).join('')}</ul></section>` : ''}
     ${(m.sources || []).length ? `<details class="more"><summary>Источники · ${m.sources.length}</summary><ul class="tight small">${m.sources.map((x) => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a></li>`).join('')}</ul></details>` : ''}
     <section class="tp-test"><h4>Тест</h4>
@@ -1943,7 +1947,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -3278,7 +3282,7 @@ function answerItem(a, qi) {
       <p class="v-text" id="ans-${qi}-${vi}">${esc(v.text)}</p>
     </div>`;
   }).join('');
-  const src = (a.sources || []).map((s) => `<span class="kchip">${esc(s.replace(/^card:/, '').replace(/^profile:/, 'профиль: '))}</span>`).join('');
+  const src = (a.sources || []).map((s) => `<span class="kchip">${esc(s.replace(/^card:/, '').replace(/^profile:/, 'профиль: ').replace(/^insight:\d{4}-\d{2}-\d{2}-/, 'инсайт: '))}</span>`).join('');
   return `<li class="answer">
     <div class="a-head"><strong>${esc(a.q)}</strong>
       <span class="pill ${tone}">${label}</span>${a.type ? `<span class="muted small">${Q_TYPES[a.type] || esc(a.type)}</span>` : ''}</div>

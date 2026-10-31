@@ -93,7 +93,7 @@ def calibrations():
 
 def api(base):
     section("API")
-    urls = ["/", "/api/vacancies", "/api/feed", "/api/feed/edtech/companies", "/api/feed/fintech/companies",
+    urls = ["/", "/api/vacancies", "/api/insights", "/api/feed", "/api/feed/edtech/companies", "/api/feed/fintech/companies",
             "/api/job-sites", "/api/master", "/api/profile", "/api/profile-answers", "/api/events",
             "/api/agent/status", "/api/agent/usage", "/api/cases", "/api/agent/models",
             "/api/targets", "/api/stories", "/api/money", "/api/week", "/api/feed/keys", "/api/voice", "/api/answer-library"]
@@ -112,6 +112,10 @@ def api(base):
     for l in cases["letters"]:
         code, _, _ = get(base, f"/api/cases/raw/{q(l['file'])}")
         ok(code == 200, f"надиктовка {l['file']} → {code}")
+    # C12: инсайты — у каждого id, заголовок и суть; плохой id → 400
+    ins = json.loads(get(base, "/api/insights")[2])
+    for i in ins["items"]:
+        ok(bool(i.get("id")) and bool(i.get("title")) and bool(i.get("essence")), f"инсайт {i.get('id')}: нет заголовка или сути")
     code, _, _ = get(base, "/api/topics/..%2Fetc")
     ok(code in (400, 404), f"тема с плохим slug → {code}")
     items = json.loads(get(base, "/api/vacancies")[2])["items"]

@@ -30,6 +30,7 @@ const JOB_TITLES = {
   topics: ['Темы для интервью готовы', 'Темы для интервью не собрались'], lesson: ['Урок по теме готов', 'Урок по теме не собрался'],
   lessonvideo: ['Видео к уроку найдено', 'Видео к уроку не найдено'], translate: ['Перевод урока готов', 'Перевод урока не получился'],
   topictest: ['Тест по теме готов', 'Тест по теме не собрался'],
+  insight: ['Инсайт разобран — проверь и сохрани', 'Разбор инсайта не удался'],
 };
 function jobLink(job) {
   const t = job.vacancy || job.target;
@@ -38,6 +39,7 @@ function jobLink(job) {
   if (job.kind === 'case1' || job.kind === 'case2') return `#/cases/draft/${job.target}`;
   if (job.kind === 'casescan') return '#/cases/suggestions';
   if (job.kind === 'voice') return '#/cases/letters';
+  if (job.kind === 'insight') return '#/cases/insights';
   if (job.kind === 'outreach') return '#/feed';
   return t && !/^[0-9a-f]{8}$/.test(t) ? `#/v/${encodeURIComponent(t)}` : '#/';
 }
@@ -107,7 +109,8 @@ const MODEL_CHOICES = ['haiku', 'sonnet', 'opus', 'default'];
 const TASKS = {
   fit: ['Оценка фита подробно (агент)', 'sonnet'], fitquick: ['Быстрый фит (один ход)', 'haiku'], applymsg: ['Сообщение к отклику (один ход)', 'haiku'],
   topics: ['Темы для интервью (один ход)', 'haiku'], lesson: ['Урок по теме (агент, поиск)', 'sonnet'], lessonvideo: ['Повторный поиск видео к уроку', 'sonnet'],
-  translate: ['Перевод урока (один ход)', 'haiku'], topictest: ['Тест по теме (один ход)', 'haiku'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
+  translate: ['Перевод урока (один ход)', 'haiku'], topictest: ['Тест по теме (один ход)', 'haiku'],
+  insight: ['Разбор инсайта (один ход)', 'haiku'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
   casescan: ['Поиск фактов в надиктовках', 'haiku'], edtech: ['Расширение базы компаний', 'haiku'],
   tailor: ['Адаптация CV', 'sonnet'], letter: ['Письмо из надиктовки', 'sonnet'], lettergen: ['Сгенерированное письмо', 'sonnet'],
   outline: ['Структура письма', 'sonnet'], answers: ['Ответы на вопросы формы', 'sonnet'], verdict: ['Вердикт рекрутера', 'sonnet'], outreach: ['Первое сообщение контакту', 'sonnet'], interview: ['Подготовка к собеседованию', 'sonnet'], practice: ['Тренажёр собеседования', 'sonnet'],

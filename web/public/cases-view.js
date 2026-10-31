@@ -12,7 +12,7 @@ const casePill = (st) => {
   const [tone, label] = CASE_STATUS[st] || ['neutral', st || '—'];
   return `<span class="pill ${tone}">${esc(label)}</span>`;
 };
-const CASE_TABS = [['', 'Карточки'], ['letters', 'Надиктовки писем'], ['suggestions', 'Предложено добавить'], ['gaps', 'Пробелы']];
+const CASE_TABS = [['', 'Карточки'], ['letters', 'Надиктовки писем'], ['insights', 'Инсайты'], ['suggestions', 'Предложено добавить'], ['gaps', 'Пробелы']];
 
 async function loadCases(r) {
   clearTimeout(caseDraftTimer);
@@ -22,6 +22,7 @@ async function loadCases(r) {
   if (sub.startsWith('draft/')) return renderCaseDraft(sub.slice(6));
   if (sub === 'new') return renderCaseNew(r.params.target || '');
   if (!casesData) root.innerHTML = '<div class="page-wrap"><div class="empty"><span class="spin"></span>Читаю базу кейсов…</div></div>';
+  if (sub === 'insights') { try { insightsData = await api('/api/insights'); } catch { insightsData = null; } }
   try { casesData = await api('/api/cases'); } catch (e) {
     root.innerHTML = `<div class="page-wrap"><p class="error">${esc(e.message)}</p></div>`;
     return;
@@ -41,14 +42,14 @@ function casesHead(d) {
 
 function renderCasesList(sub) {
   const d = casesData;
-  const counts = { '': d.cards.length, letters: d.letters.length, suggestions: d.suggestions.length, gaps: d.gaps.top.length };
+  const counts = { '': d.cards.length, letters: d.letters.length, insights: d.insightsCount ?? 0, suggestions: d.suggestions.length, gaps: d.gaps.top.length };
   const drafts = d.drafts.length ? `<section class="case-drafts">
       <h3 class="st-h">Черновики кейсов</h3>
       ${d.drafts.map((x) => `<a class="case-draft-row" href="#/cases/draft/${enc(x.id)}">
         <span>${esc(x.summary || (x.dictation || '').slice(0, 90) || 'кейс')}${x.target ? ` <span class="muted">· дополнение к ${esc(x.target)}</span>` : ''}</span>
         <span class="pill ${['error1', 'error2'].includes(x.state) ? 'bad' : x.state === 'answers' ? 'warn' : 'neutral'}">${{ round1: 'агент разбирает', round2: 'агент собирает карточку', answers: 'ждёт ответов', error1: 'ошибка', error2: 'ошибка' }[x.state] || x.state}</span></a>`).join('')}
     </section>` : '';
-  const body = { '': casesCardsHtml, letters: casesLettersHtml, suggestions: casesSuggestionsHtml, gaps: casesGapsHtml }[sub] || casesCardsHtml;
+  const body = { '': casesCardsHtml, letters: casesLettersHtml, insights: insightsHtml, suggestions: casesSuggestionsHtml, gaps: casesGapsHtml }[sub] || casesCardsHtml;
   $('#casesView').innerHTML = `<div class="page-wrap">
     ${casesHead(d)}
     ${drafts}
@@ -60,6 +61,7 @@ function renderCasesList(sub) {
     </section>
   </div>`;
   bindCasesList(sub);
+  if (sub === 'insights') bindInsights();
 }
 
 function casesCardsHtml(d) {
@@ -239,6 +241,163 @@ function bindCasesList(sub) {
   }));
   root.querySelectorAll('[data-gapnew]').forEach((b) => b.addEventListener('click', () => {
     startNewCaseWith(`Кейс про «${b.dataset.gapnew}»: `);
+  }));
+}
+
+// ---------- инсайты (C12, docs/specs/34-insights-base.md) ----------
+
+let insightsData = null;
+let insightForm = false;     // форма «+ Инсайт» открыта
+let insightEdit = null;      // id инсайта в режиме правки
+let insightQuery = '';
+let insightTag = '';
+let insightSrc = '';
+const WHERE_LABELS = { interview: 'подготовка к интервью', answers: 'ответы формы', letter: 'письмо', 'cv-report': 'отчёт CV' };
+
+function insightSourceLine(i, types) {
+  const s = i.source || {};
+  return `${esc(types[s.type] || s.type || '')}${s.title ? `: ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>` : esc(s.title)}` : s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">ссылка</a>` : ''} · ${esc(s.date || i.created || '')}`;
+}
+
+function insightFormHtml(D) {
+  const dr = D.draft;
+  const busy = dr?.job && ['running', 'queued'].includes(dr.job.state);
+  const types = D.sourceTypes;
+  const src = dr?.source || { type: 'video', date: new Date().toISOString().slice(0, 10) };
+  if (dr?.parsed) {
+    const p = dr.parsed;
+    return `<section class="card insight-form" id="insightForm"><h3 class="st-h">Проверь и сохрани</h3>
+      ${p.looks_like_case ? `<div class="banner warn" style="margin:0 0 8px"><p>Похоже на кейс — это твой опыт с результатом${p.case_hint ? `: «${esc(p.case_hint)}»` : ''}. В инсайте это будет только взглядом; чтобы опыт попал в CV, надиктуй кейс.</p>
+        <button type="button" class="small" id="insCase">Надиктовать кейс</button></div>` : ''}
+      ${p.multiple ? `<div class="banner info" style="margin:0 0 8px"><p>Похоже на несколько мыслей${p.parts.length ? `: ${p.parts.map(esc).join('; ')}` : ''}. Можно сохранить как один инсайт или убрать лишнее и надиктовать остальное отдельно.</p></div>` : ''}
+      <label>Заголовок <input id="insTitle" value="${esc(p.title)}" maxlength="120"></label>
+      <label>Суть — твоими словами <textarea id="insEssence" rows="4">${esc(p.essence)}</textarea></label>
+      <label>Для интервью (EN) <textarea id="insEn" rows="2">${esc(p.en)}</textarea></label>
+      <label>Теги, через запятую <input id="insTags" value="${esc(p.tags.join(', '))}"></label>
+      <p class="muted small" style="margin:4px 0">${insightSourceLine({ source: src }, types)}</p>
+      <details class="more"><summary>Исходная надиктовка</summary><p class="raw-text small">${esc(dr.text)}</p></details>
+      <div class="row" style="margin-top:8px"><button type="button" class="primary small" id="insSave">Сохранить</button>
+        <button type="button" class="small" id="insReparse">Разобрать заново</button>
+        <button type="button" class="link-btn inline" id="insCancel">отменить</button></div>
+      <p class="error" id="insErr"></p></section>`;
+  }
+  return `<section class="card insight-form" id="insightForm"><h3 class="st-h">Новый инсайт</h3>
+    ${busy ? `<div class="running"><span class="spin"></span>Разбираю надиктовку…</div>` : dr?.job?.state === 'error' ? `<p class="error">Разбор не удался: ${esc(dr.job.error)}</p>` : ''}
+    <div class="ins-src">
+      <label>Источник <select id="insType">${Object.entries(types).map(([k, l]) => `<option value="${k}" ${src.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Название <input id="insSrcTitle" value="${esc(src.title || '')}" placeholder="ProductCamp 2026, «Inspired», подкаст Lenny…"></label>
+      <label>Ссылка <input id="insUrl" value="${esc(src.url || '')}" placeholder="необязательно"></label>
+      <label>Дата <input id="insDate" type="date" value="${esc(src.date || '')}"></label>
+    </div>
+    <div class="dict"><textarea id="insText" placeholder="Нажми 🎤 и расскажи, что запомнилось и почему это важно…" ${busy ? 'disabled' : ''}>${esc(dr?.text || '')}</textarea>
+      <button class="mic" id="insMic" type="button" title="Диктовка голосом" aria-label="Диктовка голосом">🎤</button></div>
+    <div class="hint" id="insMicHint"></div>
+    <div class="row" style="margin-top:8px"><button type="button" class="primary small" id="insParse" ${busy ? 'disabled' : ''}>Разобрать</button>
+      <button type="button" class="link-btn inline" id="insCancel">отменить</button>
+      <span class="hint" style="margin:0">Исправит ошибки распознавания, даст заголовок, суть твоими словами, фразу для интервью и теги. Haiku, ≈ $0.002, ~10 с.</span></div>
+    <p class="error" id="insErr"></p></section>`;
+}
+
+function insightsHtml() {
+  const D = insightsData;
+  if (!D) return '<div class="table-box empty-box">Не удалось прочитать инсайты.</div>';
+  const q = insightQuery.toLowerCase();
+  const list = D.items.filter((i) => (!insightTag || i.tags.includes(insightTag)) && (!insightSrc || i.source.type === insightSrc)
+    && (!q || [i.title, i.essence, i.en, i.source.title, ...i.tags].join(' ').toLowerCase().includes(q)));
+  const showForm = insightForm || D.draft;
+  const card = (i) => insightEdit === i.id ? `<article class="card insight" data-ins="${esc(i.id)}">
+      <label>Заголовок <input data-ef="title" value="${esc(i.title)}"></label>
+      <label>Суть <textarea data-ef="essence" rows="4">${esc(i.essence)}</textarea></label>
+      <label>Для интервью (EN) <textarea data-ef="en" rows="2">${esc(i.en)}</textarea></label>
+      <label>Теги <input data-ef="tags" value="${esc(i.tags.join(', '))}"></label>
+      <div class="row"><button type="button" class="primary small" data-insupd="${esc(i.id)}">Сохранить</button>
+        <button type="button" class="link-btn inline" data-insedit="">отменить</button></div></article>`
+    : `<article class="card insight" data-ins="${esc(i.id)}">
+      <div class="ins-head"><h3>${esc(i.title)}</h3>
+        <span class="row small"><button type="button" class="link-btn inline" data-insedit="${esc(i.id)}">изменить</button>
+          <button type="button" class="link-btn inline danger" data-insdel="${esc(i.id)}">удалить</button></span></div>
+      <p class="muted small" style="margin:0 0 6px">${insightSourceLine(i, D.sourceTypes)}</p>
+      <div class="ins-essence">${esc(i.essence)}</div>
+      ${i.en ? `<p class="ins-en">${esc(i.en)}</p>` : ''}
+      <div class="chips" style="margin:6px 0 0">${i.tags.map((t) => `<button type="button" class="kchip" data-instag="${esc(t)}">${esc(t)}</button>`).join('')}
+        ${i.looks_like_case ? '<span class="pill warn">похоже на кейс</span>' : ''}</div>
+      ${i.used_in.length ? `<details class="more"><summary>Использован: ${i.used_in.length}</summary><ul class="tight small">${i.used_in.map((u) => `<li><a href="#/v/${enc(u.vacancy)}">${esc(u.vacancy)}</a> — ${esc(WHERE_LABELS[u.where] || u.where)} · ${esc(u.at)}</li>`).join('')}</ul></details>`
+        : '<p class="muted small" style="margin:6px 0 0">Ещё не использован.</p>'}
+    </article>`;
+  return `<div class="edtech-head">
+      <div><p class="muted small" style="margin:0">Мысли о профессии после видео, конференций, книг, разговоров. Это <strong>взгляд, а не опыт</strong>: в CV не попадают.
+        Используются в подготовке к интервью, ответах на вопросы о мнении и одной фразой в сгенерированном письме; под вакансию подбираются до 5 самых близких.</p></div>
+      ${showForm ? '' : '<button type="button" class="btn primary" id="insNew">+ Инсайт</button>'}
+    </div>
+    ${showForm ? insightFormHtml(D) : ''}
+    <div class="cases-filters">
+      <input type="search" id="insSearch" placeholder="Поиск по тексту и тегам" value="${esc(insightQuery)}">
+      <select id="insTagF" aria-label="Тег"><option value="">все теги</option>${D.tags.map((t) => `<option ${insightTag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+      <select id="insSrcF" aria-label="Источник"><option value="">все источники</option>${Object.entries(D.sourceTypes).map(([k, l]) => `<option value="${k}" ${insightSrc === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    </div>
+    ${list.length ? `<div class="insights">${list.map(card).join('')}</div>`
+      : `<div class="table-box empty-box">${D.items.length ? 'Ничего не найдено.' : 'Инсайтов пока нет — нажми «+ Инсайт» и надиктуй, что запомнилось.'}</div>`}`;
+}
+
+function bindInsights() {
+  const D = insightsData;
+  if (!D) return;
+  const rerender = () => { $('#casesBody').innerHTML = insightsHtml(); bindInsights(); };
+  const reload = () => loadCases(currentRoute());
+  $('#insNew')?.addEventListener('click', () => { insightForm = true; rerender(); $('#insText')?.focus(); });
+  $('#insCancel')?.addEventListener('click', async () => {
+    if (D.draft && !confirm('Отменить черновик инсайта? Текст надиктовки пропадёт.')) return;
+    insightForm = false;
+    if (D.draft) await api('/api/insights/draft', { method: 'DELETE' }).catch(() => {});
+    reload();
+  });
+  const ta = $('#insText');
+  if (ta) setupMic(ta, () => {}, { btn: $('#insMic'), hint: $('#insMicHint'), link: `${location.origin}/#/cases/insights` });
+  const source = () => ({ type: $('#insType').value, title: $('#insSrcTitle').value, url: $('#insUrl').value, date: $('#insDate').value });
+  $('#insParse')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await api('/api/insights/parse', { method: 'POST', body: { text: ta.value, source: source() } }); }
+    catch (err) { $('#insErr').textContent = err.message; e.target.disabled = false; return; }
+    reload();
+  });
+  $('#insReparse')?.addEventListener('click', async () => {
+    try { await api('/api/insights/parse', { method: 'POST', body: { text: D.draft.text, source: D.draft.source } }); } catch (err) { $('#insErr').textContent = err.message; return; }
+    reload();
+  });
+  $('#insCase')?.addEventListener('click', () => startNewCaseWith(`${D.draft.parsed.case_hint || D.draft.text}\n\n`));
+  $('#insSave')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('/api/insights', { method: 'POST', body: { title: $('#insTitle').value, essence: $('#insEssence').value, en: $('#insEn').value, tags: $('#insTags').value } });
+    } catch (err) { $('#insErr').textContent = err.message; e.target.disabled = false; return; }
+    insightForm = false;
+    flash('Инсайт сохранён в базу знаний.');
+    reload();
+  });
+  const busy = D.draft?.job && ['running', 'queued'].includes(D.draft.job.state);
+  if (busy) caseDraftTimer = setTimeout(() => { if (currentRoute().view === 'cases') reload(); }, 2500);
+  $('#insSearch')?.addEventListener('input', (e) => {
+    insightQuery = e.target.value;
+    const pos = e.target.selectionStart;
+    rerender();
+    const el = $('#insSearch'); el.focus(); el.setSelectionRange(pos, pos);
+  });
+  $('#insTagF')?.addEventListener('change', (e) => { insightTag = e.target.value; rerender(); });
+  $('#insSrcF')?.addEventListener('change', (e) => { insightSrc = e.target.value; rerender(); });
+  document.querySelectorAll('[data-instag]').forEach((b) => b.addEventListener('click', () => { insightTag = b.dataset.instag; rerender(); }));
+  document.querySelectorAll('[data-insedit]').forEach((b) => b.addEventListener('click', () => { insightEdit = b.dataset.insedit || null; rerender(); }));
+  document.querySelectorAll('[data-insupd]').forEach((b) => b.addEventListener('click', async () => {
+    const box = b.closest('[data-ins]');
+    const f = (k) => box.querySelector(`[data-ef="${k}"]`).value;
+    try { await api(`/api/insights/${enc(b.dataset.insupd)}`, { method: 'PATCH', body: { title: f('title'), essence: f('essence'), en: f('en'), tags: f('tags') } }); }
+    catch (err) { alert(err.message); return; }
+    insightEdit = null;
+    reload();
+  }));
+  document.querySelectorAll('[data-insdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Удалить инсайт из базы? Исходная надиктовка останется в knowledge-base/raw/insights/.')) return;
+    try { await api(`/api/insights/${enc(b.dataset.insdel)}`, { method: 'DELETE' }); } catch (err) { alert(err.message); return; }
+    reload();
   }));
 }
 

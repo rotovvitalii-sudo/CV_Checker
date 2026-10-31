@@ -28,6 +28,7 @@
 | C9 | [База кейсов](20-case-base.md) | Should | case-interview, C7, C8 | ~2 д | ✅ сделано (P0 + P1) |
 | C10 | [Экспорт письма в PDF и DOCX](21-letter-export.md) | Should | E1, C8 | ~0,5 д | ✅ сделано (P0 + P1) |
 | C11 | [Заполнение формы заявки (Playwright)](22-autofill-application.md) | Should | S4, C6, C9, C10, M1 | ~2–3 д | ✅ сделано (P0 + P1) |
+| C12 | [База инсайтов](34-insights-base.md) | Should | C9, W5, W8, S4 | ~1–1,5 д | ✅ готово (P0 + P1 кроме «разбить») |
 | W1 | [Порог покрытия 60–70% и «верхняя треть» CV](23-coverage-top-third.md) | Must | tailor-cv | ~0,5 д | ✅ сделано (P0 + P1) |
 | W2 | [«Вакансия ещё живая?» до адаптации](24-vacancy-alive.md) | Must | C11, S6 | ~0,5 д | ✅ сделано (P0 + P1) |
 | W3 | [Вердикт рекрутера и сводка причин](25-recruiter-verdict.md) | Should | tailor-cv, S3 | ~1 д | ✅ сделано (P0 + P1) |

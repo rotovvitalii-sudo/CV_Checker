@@ -103,6 +103,14 @@ function keywords({ name }) {
 ${KEYWORDS_STEP(name, false)}`;
 }
 
+// C12 · инсайты кандидата (docs/specs/34-insights-base.md): сервер сам подбирает до 5 близких к вакансии.
+// Инсайт — взгляд и знание, не опыт: в достижения не превращается.
+const INSIGHT_RULE = 'Инсайт — взгляд кандидата на профессию, а не его опыт: не превращай его в достижение; цифры из инсайта — только как внешние данные со ссылкой на источник («по данным доклада …»).';
+function insightsBlock(list, use) {
+  if (!list?.length) return '';
+  return `\nИнсайты кандидата, близкие к вакансии (из \`knowledge-base/insights/\`):\n${list.map((i) => `- [insight:${i.id}] ${i.title} (${i.sourceLabel})\n  Суть: ${i.essence}${i.en ? `\n  EN: ${i.en}` : ''}`).join('\n')}\n${INSIGHT_RULE}\n${use}\n`;
+}
+
 // V2: боль и минимум из фита — в верхнюю треть CV, первую фразу письма и вопросы интервью
 function painBlock(fit, use) {
   const min = (fit?.buckets?.minimum || []).map((b) => b.req).filter(Boolean);
@@ -110,9 +118,9 @@ function painBlock(fit, use) {
   return `\nИз разбора вакансии (быстрый фит, проверь по тексту):${fit.pain ? `\n- Что болит: ${fit.pain}` : ''}${fit.situation && fit.situation !== 'unclear' ? ` (ситуация: ${fit.situation})` : ''}${min.length ? `\n- Минимум требований: ${min.join('; ')}` : ''}\n${use}\n`;
 }
 
-function tailor({ name, fit }) {
+function tailor({ name, fit, insights }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Верхняя треть CV отвечает на эту боль, минимум — в первых строках (только фактами из базы).')}
+${painBlock(fit, 'Верхняя треть CV отвечает на эту боль, минимум — в первых строках (только фактами из базы).')}${insightsBlock(insights, 'В CV.md инсайты НЕ попадают. Только в report.md, раздел пробелов: если по пробелу есть инсайт — «по пробелу X есть инсайт insight:<id>: тему знаешь, кейса нет — надиктуй, если делал».')}
 Задача: выполни скил tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`) целиком для \`vacancies/${name}.md\`.
 Если \`output/${name}/01-keywords.json\` содержит \`"source": "quick"\` (черновик быстрого фита) — шаг 1 сделай заново.
 Если \`output/${name}/01-requirements.md\` и \`01-keywords.json\` уже существуют — шаг 1 не переделывай,
@@ -160,9 +168,9 @@ ${files.map((f) => `- \`knowledge-base/raw/${f}\``).join('\n')}
 Фактов об опыте (компании, цифры) в профиле нет — только манера. Вопросы не задавай.`;
 }
 
-function letterGenerate({ name, hasOutline, hasVoice, fit }) {
+function letterGenerate({ name, hasOutline, hasVoice, fit, insights }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Первая фраза письма — про эту боль и как ты её уже решал (только факты из базы).')}
+${painBlock(fit, 'Первая фраза письма — про эту боль и как ты её уже решал (только факты из базы).')}${insightsBlock(insights, 'Можно не больше одной фразы точки зрения кандидата из инсайта — в блоке «почему эта компания / этот подход»; в трассировке у неё tag "fact" и sources: ["knowledge-base/insights/<id>.md"].')}
 Задача: выполни скил cover-letter-generate (\`.claude/skills/cover-letter-generate/SKILL.md\`) для «${name}».
 - Вакансия: \`vacancies/${name}.md\`
 - CV: \`output/${name}/CV.md\`, отчёты: \`output/${name}/02-match-report.md\`, \`report.md\`
@@ -175,15 +183,16 @@ ${hasVoice ? 'Голос — по профилю `knowledge-base/voice.md` (пр
 }
 
 // W5: подготовка к собеседованию и тренажёр
-function interviewPrep({ name, hasCV, fit }) {
+function interviewPrep({ name, hasCV, fit, insights }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}
+${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}${insightsBlock(insights, 'Опирайся на инсайты в рискованных вопросах (в hint: «опора: insight <id> — …», для вопросов «что вы думаете о / как бы вы подошли») и в вопросах к компании. В 07-interview.json добавь "insights_used": ["<id>", …] — только реально использованные.')}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «подготовка», для «${name}».
 - Вакансия: \`vacancies/${name}.md\`; CV: ${hasCV ? `\`output/${name}/CV.md\`` : '`knowledge-base/base-cv.md`'}
 - Пробелы: \`output/${name}/02-match-report.md\`, \`report.md\`, \`summary.json\` / \`03-verdict.json\` (вердикт), если есть
 - Карточки: \`knowledge-base/cards/INDEX.md\` и нужные карточки
 - Банк историй: \`knowledge-base/stories.json\`, если есть — бери оттуда подходящие истории (ту же карточку и тему), уточняя «fits» под эту вакансию
-Результат — строго \`output/${name}/07-interview.json\` по схеме скила.`;
+Результат — строго \`output/${name}/07-interview.json\` по схеме скила. Файл уже есть — подготовь заново и запиши его целиком инструментом Write
+(не дописывай и не патчи скриптами: запуск скриптов в фоне недоступен).`;
 }
 
 // Тренажёр: маленький контекст (без чтения базы) — дёшево на каждую попытку
@@ -301,9 +310,9 @@ function masterImport({ id, fileName }) {
   Для conflicts сверься с \`knowledge-base/master-cv.md\` и \`knowledge-base/cards/INDEX.md\`.`;
 }
 
-function answers({ name, hasCV }) {
+function answers({ name, hasCV, insights }) {
   return `${BACKGROUND}
-
+${insightsBlock(insights, 'Для вопросов о мнении, мотивации и трендах можно опираться на инсайт — в sources ответа пиши "insight:<id>". Для фактических вопросов и вопросов об опыте — нельзя.')}
 Задача: выполни скил form-answers (\`.claude/skills/form-answers/SKILL.md\`) для «${name}».
 - Вопросы формы: \`output/${name}/05-questions.json\`
 - Вакансия: \`vacancies/${name}.md\`
@@ -326,9 +335,9 @@ ${limit} компаний: сначала компании без автосбо
 }
 
 // S4 P1 · один ответ формы заново по комментарию кандидата
-function answerRedo({ name, item, comment, out, hasCV }) {
+function answerRedo({ name, item, comment, out, hasCV, insights }) {
   return `${BACKGROUND}
-
+${insightsBlock(insights, 'Для вопроса о мнении, мотивации или трендах можно опираться на инсайт — в sources пиши "insight:<id>".')}
 Задача: скил form-answers (\`.claude/skills/form-answers/SKILL.md\`) — **переделай один ответ** для «${name}».
 Вопрос: «${item.q}»${item.limit ? ` (лимит ${item.limit} символов)` : ''}.
 Текущие варианты:
@@ -375,6 +384,30 @@ ${limit < 300 ? 'Без приветствия и подписи.' : 'Приве
 без «leverage, delve, robust, seamless, proven track record, I am writing to»; без длинных тире; предложения разной длины, одно короткое.
 ${error ? `\nПредыдущий вариант не прошёл проверку: ${error}. Исправь это.\nПредыдущий вариант: ${prev}\n` : prev ? `\nНужен другой вариант, не похожий на прошлый: ${prev}\n` : ''}
 Верни JSON: {"message": "текст сообщения", "facts": [{"text": "факт из сообщения", "source": "CV"}]}`;
+}
+
+// ---------- C12 · разбор надиктовки инсайта: один ход, сервер кладёт текст и существующие теги ----------
+const INSIGHT_SYSTEM = 'Ты бережно разбираешь надиктовку кандидата об инсайте. Ничего не добавляешь от себя. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function insightParse({ text, source, tags, topics }) {
+  return `Надиктовка (голосовой ввод, возможны ошибки распознавания):
+"""
+${String(text).slice(0, 8000)}
+"""
+Источник: ${source.type}${source.title ? ` — ${source.title}` : ''}.
+
+Существующие теги (используй их, если подходят): ${tags.join(', ') || '—'}
+Темы подготовки к интервью (если инсайт про одну из них — добавь её slug в теги): ${topics.join(', ') || '—'}
+
+Правила: исправь только ошибки распознавания; смысл и формулировки кандидата сохрани, ничего не дописывай и не обобщай сверх сказанного.
+"essence" — 1–3 мысли ПО-РУССКИ словами кандидата, каждая с новой строки, начиная с «- ».
+"en" — 1–2 предложения по-английски, как кандидат сказал бы это на интервью: просто, без LLM-штампов (leverage, delve, robust, seamless), без длинных тире.
+"tags" — 3–6 тегов kebab-case по-английски (предметная область: user-activation, pricing, ai-in-education …).
+"looks_like_case" — true, если в надиктовке есть собственный опыт кандидата с результатом («я сделал …, конверсия выросла на …»); "case_hint" — этот фрагмент.
+"multiple" — true, если это несколько разных, не связанных мыслей; "parts" — их короткие заголовки.
+
+Верни JSON: {"title": "≤ 8 слов по-русски", "slug": "kebab-case-по-английски", "essence": "- …", "en": "…", "tags": ["…"],
+"looks_like_case": false, "case_hint": "", "multiple": false, "parts": []}`;
 }
 
 // ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
@@ -458,5 +491,5 @@ ${lessonText}
 """`;
 }
 
-module.exports = { interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
