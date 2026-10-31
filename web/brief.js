@@ -90,15 +90,48 @@ function daysAgo(posted) {
   return Math.max(0, Math.floor((Date.now() - t) / 864e5));
 }
 
+// V2: покрытие корзин требований — та же логика совпадения, что term_regex в scorer/check_cv.py
+function termRegex(term) {
+  const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const alts = String(term).split('|').map((a) => a.trim()).filter(Boolean).map((a) => {
+    const words = a.split(/\s+/).map(esc);
+    words[words.length - 1] += '(?:s|es|ing|ed)?';
+    return `\\b${words.join('[\\s\\-/]+')}\\b`;
+  });
+  return alts.length ? new RegExp(alts.join('|'), 'i') : null;
+}
+const mdText = (md) => md.replace(/^#{1,3}\s+/gm, '').replace(/^\s*-\s+/gm, '').replace(/\*\*/g, '').replace(/_/g, ' ');
+
+const BUCKETS = [['minimum', 'Минимум'], ['desired', 'Желательно'], ['wishlist', 'Вишлист']];
+function buckets(fit, dir, masterFile) {
+  const b = fit?.buckets;
+  if (!b || !BUCKETS.some(([k]) => b[k]?.length)) return null;
+  const cvFile = fs.existsSync(path.join(dir, 'CV.md')) ? path.join(dir, 'CV.md') : masterFile;
+  const text = mdText(read(cvFile || ''));
+  return {
+    against: cvFile && cvFile !== masterFile ? 'cv' : 'master',
+    groups: BUCKETS.map(([key, label]) => {
+      const items = (b[key] || []).map((x) => {
+        const re = termRegex(x.kw || x.req);
+        return { req: clean(x.req), kw: clean(x.kw), hit: !!(re && text && re.test(text)) };
+      });
+      return { key, label, items, hit: items.filter((x) => x.hit).length, total: items.length };
+    }).filter((g) => g.total),
+  };
+}
+
 const known = (v) => (v && !/^(unknown|n\/a|none|null|-|—)$/i.test(String(v).trim()) ? String(v).trim() : '');
 
-function build({ dir, fit, master, url }) {
+function build({ dir, fit, master, url, masterFile }) {
   const f = fit || {};
   const req = requirements(dir);
   const counts = { yes: 0, partial: 0, gap: 0 };
   for (const r of req.items) if (r.status) counts[r.status] += 1;
   return {
     task: known(f.current_task),
+    pain: known(f.pain),
+    situation: known(f.situation),
+    buckets: buckets(f, dir, masterFile),
     who: summary(dir),
     doing: (f.what_you_do || []).map(clean).filter(Boolean).slice(0, 5),
     requirements: req.items,
@@ -122,4 +155,10 @@ function build({ dir, fit, master, url }) {
   };
 }
 
-module.exports = { build, requirements, summary };
+// Для списка и статистики (V3 P1): закрыт ли минимум — {hit, total} или null
+function minimum(fit, dir, masterFile) {
+  const g = buckets(fit, dir, masterFile)?.groups.find((x) => x.key === 'minimum');
+  return g ? { hit: g.hit, total: g.total } : null;
+}
+
+module.exports = { build, requirements, summary, minimum };

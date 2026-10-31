@@ -4,6 +4,7 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { marked } = require('marked');
 const { runJob, jobs, publicJob, ROOT, checkStatus, ensureReady, getStatus, readModels, saveModels, TASKS, MODEL_CHOICES } = require('./agent');
@@ -59,6 +60,8 @@ function withJobs(info) {
   return { ...info, jobs: out };
 }
 
+const MASTER_BASE = path.join(ROOT, 'knowledge-base', 'base-cv.md');
+
 function inboxList() {
   return Object.values(store.inbox)
     .map((it) => ({ ...it, job: publicJob(jobs.get(it.jobId)) }))
@@ -75,7 +78,8 @@ app.get('/api/vacancies', wrap(async (req, res) => {
   const items = store.scan().map((n) => {
     const info = store.vacancyInfo(n);
     return { ...withJobs(info), master: matches[n] || null, warm: warm.some((c) => targets.companyMatches(c, info.company)),
-      salaryMismatch: money.mismatch(info.submittedAnswers, m) };
+      salaryMismatch: money.mismatch(info.submittedAnswers, m), minimum: brief.minimum(info.fit, store.outDir(n), MASTER_BASE),
+      hasApplyMsg: fs.existsSync(path.join(store.outDir(n), '06-apply-message.json')) };
   });
   store.save();
   res.json({ items, inbox: inboxList(), statuses: store.STATUSES, masterVersion: master.activeVersion() });
@@ -98,9 +102,10 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.cardRefs = cardRefs(name, info);
   info.interview = readInterview(name);
   info.letterPrev = letterPrev(name);
+  info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
   info.salaryMismatch = money.mismatch(info.submittedAnswers);
-  info.brief = brief.build({ dir: store.outDir(name), fit: info.fit, master: info.master, url: info.url });
+  info.brief = brief.build({ dir: store.outDir(name), fit: info.fit, master: info.master, url: info.url, masterFile: MASTER_BASE });
   const dir = store.outDir(name);
   info.letterText = info.letterFile ? fs.readFileSync(path.join(dir, info.letterFile), 'utf8') : '';
   res.json(info);
@@ -366,7 +371,21 @@ function parseQuickFit(text) {
   const d = JSON.parse(t.slice(from, to + 1));
   const scores = Object.fromEntries(Object.entries(SCORE_MAX).map(([k, max]) => [k, Math.max(0, Math.min(max, Math.round(Number(d.scores?.[k]) || 0)))]));
   const { keywords, requirements, ...job } = d;
-  return { job: { ...job, scores }, keywords: keywords || {}, requirements: requirements || {} };
+  job.buckets = normBuckets(job.buckets);
+  job.situation = SITUATIONS.find((x) => String(job.situation || '').includes(x)) || 'unclear';
+  job.pain = String(job.pain || '').trim();
+  // Требования для 01-requirements.md: из корзин (минимум → must, остальное → nice); старый формат — как был
+  const fromBuckets = (k) => job.buckets[k].map((b) => ({ req: b.req, evidence: b.kw }));
+  const req = job.buckets.minimum.length ? { must: fromBuckets('minimum'), nice: [...fromBuckets('desired'), ...fromBuckets('wishlist')] } : requirements || {};
+  return { job: { ...job, scores }, keywords: keywords || {}, requirements: req };
+}
+
+// V2: корзины требований — {minimum, desired, wishlist} из {req, kw}; мусор отбрасываем
+const SITUATIONS = ['build_from_scratch', 'fix_chaos', 'scale', 'maintain', 'unclear'];
+function normBuckets(b) {
+  const one = (x) => (typeof x === 'string' ? { req: x, kw: x } : { req: String(x?.req || '').trim(), kw: String(x?.kw || '').trim() });
+  const list = (k, max) => (Array.isArray(b?.[k]) ? b[k].map(one).filter((x) => x.req).slice(0, max) : []);
+  return { minimum: list('minimum', 8), desired: list('desired', 10), wishlist: list('wishlist', 15) };
 }
 
 // 01-keywords.json и 01-requirements.md из быстрого фита — черновик (source: quick); tailor-cv переделает шаг 1
@@ -661,7 +680,7 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
   const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
   const job = runJob({
     kind: 'interview', target: name,
-    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')) }),
+    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit }),
     logFile: path.join(dir, 'agent-interview.log'),
     onDone: async () => {
       if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент не записал 07-interview.json');
@@ -818,6 +837,110 @@ app.delete('/api/vacancies/:name/debrief/:id', wrap(async (req, res) => {
 // Ручная заявка без текста вакансии (C4): агентным шагам не с чем работать — отказ до запуска, без трат
 const NO_TEXT = 'нет текста вакансии — вставь его в блоке «Матч»';
 const lacksText = (name) => !store.vacancyInfo(name).hasVacancyText;
+
+// ---------- V1 · сообщение к отклику (docs/specs/30-apply-message.md) ----------
+// Один ход Haiku без инструментов: сервер кладёт вакансию, CV и голос; проверки — здесь, без агента.
+const APPLY_MSG = '06-apply-message.json';
+const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+function readApplyMsg(name) {
+  try { return JSON.parse(fs.readFileSync(path.join(store.outDir(name), APPLY_MSG), 'utf8')); } catch { return null; }
+}
+function applyMsgCv(name) {
+  const cv = path.join(store.outDir(name), 'CV.md');
+  return fs.existsSync(cv) ? { cv: 'adapted', text: readText(cv) } : { cv: 'master', text: readText(MASTER_BASE) };
+}
+function humanizeScore(text) {
+  const tmp = path.join(os.tmpdir(), `cvc-msg-${crypto.randomUUID().slice(0, 8)}.md`);
+  fs.writeFileSync(tmp, text);
+  return new Promise((resolve) => {
+    execFile(path.join(ROOT, '.venv', 'bin', 'python'), ['scorer/check_humanize.py', '--file', tmp, '--json'], { cwd: ROOT, timeout: 30000 }, (err, stdout) => {
+      fs.rmSync(tmp, { force: true });
+      try { const r = JSON.parse(stdout); resolve({ score: r.score, pass: r.pass, hits: (r.hits || []).map((h) => `${h.type}: ${h.match}`).slice(0, 5) }); }
+      catch { resolve(null); }
+    });
+  });
+}
+// Длина ≤ лимита; каждое число есть в CV; humanizer ≤ 3
+async function checkApplyMsg(message, limit, cvText) {
+  const nums = [...new Set(String(message).match(/\d+(?:[.,]\d+)?/g) || [])];
+  const missing = nums.filter((n) => !new RegExp(`(?<![\\d.,])${n.replace(/[.,]/g, '[.,]')}(?![\\d])`).test(cvText));
+  const humanize = await humanizeScore(message);
+  const issues = [
+    message.length > limit && `длина ${message.length} > ${limit} символов`,
+    missing.length && `чисел нет в CV: ${missing.join(', ')}`,
+    humanize && !humanize.pass && `humanizer ${humanize.score} > 3 (${humanize.hits.join('; ')})`,
+  ].filter(Boolean);
+  return { length: message.length, missingNumbers: missing, humanize, pass: !issues.length, issues };
+}
+function applyMsgPrompt(name, limit, cvText, error, prev) {
+  const fit = store.app(name).fit || {};
+  const vac = readText(path.join(store.VACANCIES, `${name}.md`));
+  return prompts.applyMessage({ vacancy: vac, fit, cv: cvText, voice: readText(VOICE), limit, error, prev });
+}
+function runApplyMsg(name, limit, cv, error, prev) {
+  return runJob({ kind: 'applymsg', target: name, system: prompts.APPLY_MSG_SYSTEM, prompt: applyMsgPrompt(name, limit, cv.text, error, prev),
+    logFile: path.join(store.outDir(name), '06-apply-message.log') });
+}
+const jobDone = (job) => new Promise((resolve) => {
+  if (job.state === 'done' || job.state === 'error') return resolve(job);
+  job.listeners.add((ev) => { if (ev.done) resolve(job); });
+});
+const parseMsg = (t) => {
+  const s = String(t || ''), a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b < a) throw new Error('модель не вернула JSON');
+  const d = JSON.parse(s.slice(a, b + 1));
+  if (!String(d.message || '').trim()) throw new Error('пустое сообщение');
+  return { message: String(d.message).trim(), facts: Array.isArray(d.facts) ? d.facts.slice(0, 5) : [] };
+};
+
+app.post('/api/vacancies/:name/apply-message', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (busy(a, 'applymsg')) return res.status(409).json({ error: 'уже идёт' });
+  const info = store.vacancyInfo(name);
+  if (!info.hasVacancyText && !a.fit?.current_task) return res.status(400).json({ error: NO_TEXT });
+  const limit = Math.max(150, Math.min(3000, Math.round(Number(req.body?.limit) || readApplyMsg(name)?.limit || 500)));
+  const cv = applyMsgCv(name);
+  const prev = readApplyMsg(name);
+  fs.mkdirSync(store.outDir(name), { recursive: true });
+  const job = runApplyMsg(name, limit, cv, null, prev?.message);
+  job.onDone = async (j) => {
+    let m = parseMsg(j.finalText);
+    let check = await checkApplyMsg(m.message, limit, cv.text);
+    let model = j.actualModel || j.model || null;
+    let retried = false;
+    const firstIssues = check.issues;
+    if (!check.pass) { // одна повторная генерация с указанием ошибки
+      const j2 = await jobDone(runApplyMsg(name, limit, cv, check.issues.join('; '), m.message));
+      if (!j2.error) {
+        try {
+          const m2 = parseMsg(j2.finalText);
+          const c2 = await checkApplyMsg(m2.message, limit, cv.text);
+          if (c2.pass || c2.issues.length < check.issues.length) { m = m2; check = c2; model = j2.actualModel || j2.model || model; }
+          retried = true;
+        } catch { /* остаётся первый вариант с предупреждением */ }
+      }
+    }
+    fs.writeFileSync(path.join(store.outDir(name), APPLY_MSG), `${JSON.stringify({ message: m.message, facts: m.facts, limit, cv: cv.cv, model,
+      at: new Date().toISOString(), check, retried, ...(retried ? { firstIssues } : {}), prev: prev?.message || null }, null, 2)}\n`);
+  };
+  attach(name, 'applymsg', job);
+  res.json({ jobId: job.id });
+}));
+
+// Правка на месте: сохраняем текст, проверки пересчитываем
+app.patch('/api/vacancies/:name/apply-message', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const cur = readApplyMsg(name);
+  if (!cur) return res.status(404).json({ error: 'сообщения ещё нет' });
+  const message = String(req.body?.message ?? cur.message).trim();
+  const limit = Math.max(150, Math.min(3000, Math.round(Number(req.body?.limit) || cur.limit)));
+  if (!message) return res.status(400).json({ error: 'пустое сообщение' });
+  const check = await checkApplyMsg(message, limit, applyMsgCv(name).text);
+  const next = { ...cur, message, limit, check, edited: message !== cur.message || cur.edited || false, editedAt: new Date().toISOString() };
+  fs.writeFileSync(path.join(store.outDir(name), APPLY_MSG), `${JSON.stringify(next, null, 2)}\n`);
+  res.json(next);
+}));
 
 app.post('/api/vacancies/:name/verdict', agentReady, wrap(async (req, res) => {
   const name = store.safeName(req.params.name);
@@ -1344,7 +1467,7 @@ app.post('/api/vacancies/:name/tailor', agentReady, wrap(async (req, res) => {
   const baseVersion = master.activeVersion();
   const job = runJob({
     kind: 'tailor', target: name,
-    prompt: prompts.tailor({ name }),
+    prompt: prompts.tailor({ name, fit: store.app(name).fit }),
     logFile: path.join(store.outDir(name), 'agent-tailor.log'),
     onDone: async () => {
       if (!fs.existsSync(path.join(store.outDir(name), 'CV.docx'))) throw new Error('агент закончил, но CV.docx не появился');
@@ -1524,7 +1647,7 @@ app.post('/api/vacancies/:name/letter-generate', agentReady, wrap(async (req, re
   const before = fs.existsSync(letterPath) ? fs.statSync(letterPath).mtimeMs : 0;
   const job = runJob({
     kind: 'lettergen', target: name,
-    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE) }),
+    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE), fit: store.app(name).fit }),
     logFile: path.join(dir, 'agent-lettergen.log'),
     onDone: async () => {
       if (!fs.existsSync(letterPath) || fs.statSync(letterPath).mtimeMs === before) throw new Error('агент закончил, но Cover Letter.md не обновился');

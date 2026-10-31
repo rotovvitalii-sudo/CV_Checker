@@ -134,7 +134,7 @@ function pickFit(j) {
   if (!j) return null;
   const keys = ['total', 'scores', 'bucket', 'flags', 'hard_filters', 'current_task', 'why', 'anchor_case', 'anchor_card', 'anchor_card_missing',
     'gaps', 'title', 'company', 'url', 'location', 'work_format', 'seniority', 'domain', 'salary',
-    'what_you_do', 'source', 'date_posted'];
+    'what_you_do', 'source', 'date_posted', 'pain', 'situation', 'buckets'];
   return Object.fromEntries(keys.filter((k) => j[k] !== undefined).map((k) => [k, j[k]]));
 }
 

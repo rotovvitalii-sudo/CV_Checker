@@ -542,6 +542,7 @@ function renderDetail() {
       </div>
     </div>
 
+    ${d.hasVacancy ? applyMsgBlock(d, d.jobs.applymsg) : ''}
     <div class="card" id="formCard"><h2><span class="n">↗</span>Подать на сайте</h2><p class="muted small">Загружаю…</p></div>
     ${d.hasVacancy && d.hasVacancyText ? answersBlock(d, d.jobs.answers) : ''}
     ${submittedBlock(d)}`;
@@ -555,6 +556,73 @@ function renderDetail() {
   if (d.letterText) bindLetterExport(d);
   for (const j of [jFit, jTailor, jLetter, jKw, d.jobs.answers, d.jobs.outline, d.jobs.verdict, d.jobs.interview]) if (j) attachFeed(j);
   bindVerdict(d);
+  bindApplyMsg(d);
+  if (d.jobs.applymsg) attachFeed(d.jobs.applymsg);
+}
+
+// V1 · короткое сообщение к отклику (docs/specs/30-apply-message.md)
+const MSG_LIMITS = [[300, 'коротко'], [500, 'обычно'], [1000, 'длинно']];
+function applyMsgBlock(d, job) {
+  const m = d.applyMessage;
+  const busy = job && ['running', 'queued'].includes(job.state);
+  const limit = m?.limit || 500;
+  const can = d.hasVacancyText || d.fit?.current_task;
+  const warn = m && !m.check?.pass ? `<div class="banner warn" style="margin:8px 0 0"><p style="margin:0">Проверка не пройдена: ${esc((m.check?.issues || []).join('; '))}. Поправь текст или сделай ещё вариант.</p></div>` : '';
+  return `<div class="card apply-msg" id="applyMsgCard"><h2><span class="n">✉</span>Сообщение к отклику</h2>
+    <p class="muted small" style="margin:0 0 8px">Для поля «message» в форме (Djinni, Workable, Ashby, Easy Apply): роль и почему эта вакансия, один результат с цифрой, готовность поговорить.
+      Факты — только из ${d.hasCV ? 'адаптированного CV' : 'Master CV'}. Haiku, один ход, ≈ $0.005. Отправляешь сам.</p>
+    ${busy || job?.state === 'error' ? jobBlock(job) : ''}
+    <div class="row msg-controls">
+      <label class="small">Лимит поля <input type="number" id="msgLimit" min="150" max="3000" step="50" value="${limit}" class="num-in"> символов</label>
+      ${MSG_LIMITS.map(([n, l]) => `<button type="button" class="link-btn inline" data-msglimit="${n}">${l} · ${n}</button>`).join(' ')}
+    </div>
+    ${m ? `<textarea id="msgText" rows="5" maxlength="4000">${esc(m.message)}</textarea>
+      <div class="row msg-meta">
+        <span class="small mono" id="msgCount">${m.message.length} / ${m.limit}</span>
+        ${m.cv === 'master' ? '<span class="pill neutral">по Master CV</span>' : ''}
+        ${m.check?.pass ? '<span class="pill good" title="длина в лимите, все цифры есть в CV, humanizer ≤ 3">проверено</span>' : ''}
+        ${m.edited ? '<span class="muted small">правлено вручную</span>' : ''}
+        <span class="muted small">${m.model ? esc(modelShort(m.model)) + ' · ' : ''}${fmtDay(m.at)}</span>
+      </div>
+      ${warn}
+      <div class="row" style="margin-top:8px">
+        <button type="button" class="small primary" id="msgCopy">Копировать</button>
+        <button type="button" class="small" id="msgSave" disabled>Сохранить правку</button>
+        <button type="button" class="small" id="msgNew" ${busy || !can ? 'disabled' : ''}>Ещё вариант</button>
+        ${m.prev ? '<details class="more inline-details"><summary>прошлый вариант</summary><p class="small">' + esc(m.prev) + '</p></details>' : ''}
+      </div>`
+    : `<div class="row" style="margin-top:8px"><button type="button" class="small ${d.sent ? '' : 'primary'}" id="msgNew" ${busy || !can ? 'disabled' : ''}>Сделать сообщение</button>
+      ${!can ? '<span class="hint" style="margin:0">Вставь текст вакансии в блоке «Матч».</span>' : ''}</div>`}
+  </div>`;
+}
+
+// Несохранённая правка сообщения переживает перерисовку карточки (её перерисовывают задачи агента и проверки)
+let msgDraft = null; // { name, text, limit }
+function bindApplyMsg(d) {
+  const lim = $('#msgLimit');
+  if (!lim) return;
+  const txt = $('#msgText');
+  const count = () => { if (txt) { const n = txt.value.length, l = Number(lim.value) || 500; $('#msgCount').textContent = `${n} / ${l}`; $('#msgCount').classList.toggle('over', n > l); } };
+  const dirty = () => { msgDraft = { name: d.name, text: txt?.value ?? null, limit: lim.value }; if ($('#msgSave')) $('#msgSave').disabled = false; };
+  if (msgDraft?.name === d.name) {
+    lim.value = msgDraft.limit;
+    if (txt && msgDraft.text != null) { txt.value = msgDraft.text; $('#msgSave').disabled = false; }
+    count();
+  } else msgDraft = null;
+  document.querySelectorAll('[data-msglimit]').forEach((b) => b.addEventListener('click', () => { lim.value = b.dataset.msglimit; count(); dirty(); }));
+  lim.addEventListener('input', () => { count(); dirty(); });
+  txt?.addEventListener('input', () => { count(); dirty(); });
+  $('#msgNew')?.addEventListener('click', () => { const limit = Number(lim.value) || 500; msgDraft = null; startStep('apply-message', { limit }); });
+  $('#msgCopy')?.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(txt.value); $('#msgCopy').textContent = 'Скопировано'; setTimeout(() => { $('#msgCopy').textContent = 'Копировать'; }, 1500); }
+    catch { txt.select(); }
+  });
+  $('#msgSave')?.addEventListener('click', async () => {
+    try { d.applyMessage = await api(`/api/vacancies/${enc(d.name)}/apply-message`, { method: 'PATCH', body: { message: txt.value, limit: Number(lim.value) || 500 } }); }
+    catch (e) { alert(e.message); return; }
+    msgDraft = null;
+    await loadDetail();
+  });
 }
 
 // Матч вакансии с актуальным Master CV (покрытие ключевых слов, scorer/check_master.py)
@@ -1594,6 +1662,27 @@ function cardRefsLine(d) {
   return `<p class="card-refs"><span class="muted small">Опирается на карточки —</span> ${[part('CV', r.cv), part('Письмо', r.letter)].filter(Boolean).join('<span class="dot-sep" aria-hidden="true">·</span>')}</p>`;
 }
 
+// V2 · «что болит» и корзины требований (docs/specs/31-vacancy-pain.md)
+const SITUATION_LABELS = { build_from_scratch: 'строить с нуля', fix_chaos: 'навести порядок', scale: 'масштабировать', maintain: 'поддерживать' };
+function bucketsSec(b) {
+  const bk = b.buckets;
+  if (!bk) return '';
+  const item = (x) => `<li class="${x.hit ? 'hit' : 'miss'}" title="${esc(x.kw)}"><span class="${x.hit ? 'ok-mark' : 'bad-mark'}">${x.hit ? '✓' : '✗'}</span> ${esc(x.req)}</li>`;
+  const min = bk.groups.find((g) => g.key === 'minimum');
+  const where = bk.against === 'cv' ? 'в адаптированном CV' : 'в Master CV';
+  const whereTip = 'совпадение по словам (ключ корзины — в подсказке у пункта)';
+  const hint = min ? (min.hit === min.total
+    ? `<p class="small good-text" style="margin:6px 0 0">Минимум закрыт — откликайся, даже если вишлист нет.</p>`
+    : `<p class="small" style="margin:6px 0 0">Минимум не закрыт ${where}: ${min.items.filter((x) => !x.hit).map((x) => esc(x.req)).join('; ')}. Есть в опыте — добавь в CV при адаптации; нет — это пробел.</p>`) : '';
+  return `<div class="brief-sec buckets">
+    <div class="sec-head"><h3>Требования по корзинам</h3><span class="muted small">${bk.groups.map((g) => `${g.label.toLowerCase()} ${g.hit}/${g.total}`).join(' · ')} · <span title="${whereTip}">${where}</span></span></div>
+    ${bk.groups.map((g) => g.key === 'wishlist'
+      ? `<details class="more"><summary>${g.label} · ${g.hit}/${g.total}</summary><ul class="bucket">${g.items.map(item).join('')}</ul></details>`
+      : `<p class="bucket-h">${g.label} · ${g.hit}/${g.total}</p><ul class="bucket">${g.items.map(item).join('')}</ul>`).join('')}
+    ${hint}
+  </div>`;
+}
+
 function briefBlock(d) {
   const b = d.brief;
   if (!b) return '';
@@ -1608,6 +1697,9 @@ function briefBlock(d) {
   const missing = b.missing.filter((k) => !b.gaps.some((g) => g.toLowerCase().includes(k.split('|')[0].toLowerCase())));
   return `<section class="card brief" aria-labelledby="briefTitle">
     <h2 id="briefTitle" class="sr-only">Коротко о вакансии</h2>
+    ${b.pain || (b.situation && b.situation !== 'unclear') ? `<p class="brief-pain"><strong>Болит:</strong> ${b.pain ? esc(b.pain) : '<span class="muted">не видно, зачем открыли роль — возможна вакансия-призрак</span>'}
+      ${SITUATION_LABELS[b.situation] ? `<span class="pill neutral">${SITUATION_LABELS[b.situation]}</span>` : ''}</p>`
+      : b.buckets ? '<p class="brief-pain muted small">Не видно, зачем открыли роль — возможна вакансия-призрак.</p>' : ''}
     <div class="brief-grid">
       <div class="brief-col">
         <div class="brief-sec">
@@ -1619,12 +1711,13 @@ function briefBlock(d) {
           <h3>Что делать</h3>
           ${b.doing.length ? `<ul class="dots">${b.doing.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : nodata}
         </div>
-        <div class="brief-sec">
-          <div class="sec-head"><h3>Что нужно</h3>${tally}</div>
+        ${bucketsSec(b)}
+        ${b.buckets && !reqs.some((r) => r.status) ? '' : `<div class="brief-sec">
+          <div class="sec-head"><h3>${b.buckets ? 'Что нужно · по отчёту адаптации' : 'Что нужно'}</h3>${tally}</div>
           ${reqs.length ? `<ul class="reqs">${shown.map(reqItem).join('')}</ul>
             ${rest.length ? `<details class="more"><summary>ещё ${rest.length}</summary><ul class="reqs">${rest.map(reqItem).join('')}</ul></details>` : ''}`
             : '<p class="muted small" style="margin:0">Требования появятся после извлечения ключей или «Адаптировать CV».</p>'}
-        </div>
+        </div>`}
       </div>
       <div class="brief-col">
         <div class="brief-sec">
@@ -2431,6 +2524,71 @@ function bindStatsPeriod() {
   }));
 }
 
+// V3 · диагностика тишины (docs/specs/32-silence-diagnosis.md): 5 проверок по отправленным заявкам, без агента
+// Дни от публикации до отправки; нет даты публикации — от добавления в приложение («≈», нижняя оценка)
+function applySpeed(i) {
+  if (!i.sent?.at) return null;
+  const posted = Date.parse(i.fit?.date_posted || '');
+  const from = Number.isFinite(posted) ? posted : Number(i.created) || null;
+  if (!from) return null;
+  return { days: Math.max(0, Math.floor((Date.parse(i.sent.at) - from) / DAY_MS)), approx: !Number.isFinite(posted) };
+}
+const speedBucket = (s) => (!s ? 'none' : s.days <= 3 ? 'fast' : s.days <= 7 ? 'mid' : 'late');
+function silenceChecks(x) {
+  const i = x.i;
+  const sp = applySpeed(i);
+  const waiting = i.status === 'sent' && i.waiting?.daysLeft > 0;
+  return {
+    // V2: «минимум закрыт» по корзинам, если они есть; иначе — фит 7+
+    min: i.minimum ? i.minimum.hit === i.minimum.total : i.fit?.total == null ? null : i.fit.total >= FIT_THRESHOLD,
+    top: i.hasCV && i.cv?.topThird ? !!i.cv.topThird.pass : null,
+    adapted: !!(i.sent.package && i.hasCV),
+    speed: sp ? (sp.days <= 3 ? true : sp.days <= 7 ? 'part' : false) : null,
+    sp, format: i.fit?.work_format,
+    outcome: x.st.responded ? 'yes' : waiting ? 'wait' : 'no',
+  };
+}
+const SILENCE_RULES = [
+  ['min', 'Минимум не закрыт', (n, t) => `${n} из ${t} без ответа — минимум вакансии не закрыт (фит ниже ${FIT_THRESHOLD} или пункты минимума не найдены в CV): стреляешь не туда.`,
+    `Подавайся на фит ${FIT_THRESHOLD}+: в заявках — фильтр «фит ${FIT_THRESHOLD}+», в <a href="#/feed">ленте</a> — вкладка «Подходят».`],
+  ['top', 'Верхняя треть', (n, t) => `${n} из ${t} без ответа — главное не видно в верхней трети CV.`,
+    'Пересобери CV: задача роли и ≥ 3 обязательных ключа — до Experience (W1).'],
+  ['adapted', 'Не адаптировано', (n, t) => `${n} из ${t} без ответа — отправлено без адаптированного CV.`,
+    'Адаптируй CV под вакансию перед отправкой («Адаптировать CV» в заявке).'],
+  ['speed', 'Поздно', (n, t) => `${n} из ${t} без ответа — подано позже 7 дней после публикации.`,
+    'Подавайся в первые 3 дня: отклики разбирают пачками, ранние — выше в списке. Обновляй ленту каждый день.'],
+];
+function silenceBlock(sent) {
+  const rows = sent.slice().sort((a, b) => Date.parse(b.i.sent.at) - Date.parse(a.i.sent.at)).slice(0, 10)
+    .map((x) => ({ x, c: silenceChecks(x) }));
+  if (!rows.length) return `<section class="card silence"><h3 class="st-h">Почему тишина</h3>
+    <p class="muted small" style="margin:0">Появится после первой отметки отправки.</p></section>`;
+  const mark = (v) => (v === true ? '<span class="ok-mark">✓</span>' : v === 'part' ? '<span class="part-mark">±</span>' : v === false ? '<span class="bad-mark">✗</span>' : '<span class="muted">—</span>');
+  // Вывод — по всем заявкам периода «без ответа и уже не ждём»; пока их меньше MIN_N — предварительно, по последним 10 без ответа (включая ожидающие)
+  const silentAll = sent.map((x) => ({ x, c: silenceChecks(x) })).filter((r) => r.c.outcome === 'no');
+  const prelim = silentAll.length < MIN_N;
+  const base = prelim ? rows.filter((r) => r.c.outcome !== 'yes') : silentAll;
+  const fails = SILENCE_RULES.map(([k, l, msg, act]) => ({ k, l, msg, act, n: base.filter((r) => r.c[k] === false).length }))
+    .filter((f) => base.length && f.n / base.length >= 0.5).sort((a, b) => b.n - a.n).slice(0, 2);
+  const outcome = { yes: '<span class="pill good">ответили</span>', wait: '<span class="pill neutral">ждём</span>', no: '<span class="pill bad">нет</span>' };
+  const whom = prelim ? `из последних ${rows.length} без ответа (включая тех, кого ещё ждём)` : 'без ответа';
+  const conclusions = !base.length
+    ? '<p class="muted small" style="margin:8px 0 0">Среди последних отправленных всем ответили.</p>'
+    : (prelim ? `<p class="muted small" style="margin:8px 0 0">Окончательно «без ответа» пока ${silentAll.length} — вывод предварительный.</p>` : '')
+      + (fails.length ? fails.map((f) => `<div class="banner warn" style="margin:8px 0 0"><p style="margin:0"><strong>${esc(f.l)}.</strong> ${f.msg(f.n, base.length).replace('без ответа', whom)} ${f.act}</p></div>`).join('')
+      : `<div class="banner info" style="margin:8px 0 0"><p style="margin:0">Явной причины нет: ни одна проверка не проваливается хотя бы у половины из ${base.length} заявок ${whom} — смотри разрезы ниже (формат, скорость, канал).</p></div>`);
+  return `<section class="card silence"><h3 class="st-h">Почему тишина · последние ${rows.length} отправленных</h3>
+    <div class="table-box flat"><table class="apps"><thead><tr><th>Заявка</th><th title="минимум по корзинам (N/M) или фит ${FIT_THRESHOLD}+">Минимум</th><th title="задача и ключи до Experience">Верх. треть</th>
+      <th title="отправлено с адаптированным CV">Адапт.</th><th title="дней от публикации до отправки">Скорость</th><th>Формат</th><th>Итог</th></tr></thead><tbody>
+      ${rows.map(({ x, c }) => `<tr><td><a href="#/v/${enc(x.i.name)}">${esc(x.i.company || x.i.name)}</a><div class="muted small">${esc(x.i.role || '')}</div></td>
+        <td>${mark(c.min)}${x.i.minimum ? ` <span class="muted small mono" title="минимум закрыт">${x.i.minimum.hit}/${x.i.minimum.total}</span>` : c.min != null ? ` <span class="muted small mono" title="фит">${x.i.fit.total}</span>` : ''}</td><td>${mark(c.top)}</td><td>${mark(c.adapted)}</td>
+        <td>${mark(c.speed)}${c.sp ? ` <span class="muted small mono" title="${c.sp.approx ? 'даты публикации нет — от добавления в приложение' : ''}">${c.sp.approx ? '≈' : ''}${c.sp.days} дн.</span>` : ''}</td>
+        <td class="small">${esc(FORMAT_LABELS[c.format] || '—')}</td><td>${outcome[c.outcome]}</td></tr>`).join('')}</tbody></table></div>
+    ${conclusions}
+    <p class="muted small" style="margin:8px 0 0">Вывод — по всем заявкам периода «нет» (без ответа и уже не ждём), пока их меньше ${MIN_N} — по последним без ответа: проверка, не пройденная хотя бы у половины. «≈» — даты публикации нет, считаю от добавления в приложение.</p>
+  </section>`;
+}
+
 function statsView() {
   const pool = items.filter(inStatsPeriod);
   const all = pool.map((i) => ({ i, st: appStats(i) }));
@@ -2462,6 +2620,12 @@ function statsView() {
   const letterModeOf = (x) => x.i.sent.letterMode || (x.i.sent.letterFile ? 'dictated' : 'none');
   const letterModes = [['Сгенерировано агентом', 'generated'], ['Из надиктовки', 'dictated'], ['Без письма', 'none']]
     .map(([l, k]) => [l, sent.filter((x) => letterModeOf(x) === k)]).filter(([, l]) => l.length);
+  const formats = [...Object.entries(FORMAT_LABELS).map(([k, l]) => [l, sent.filter((x) => x.i.fit?.work_format === k)]),
+    ['Не указан', sent.filter((x) => !FORMAT_LABELS[x.i.fit?.work_format])]].filter(([, l]) => l.length);
+  const minimums = [['Закрыт', sent.filter((x) => x.i.minimum && x.i.minimum.hit === x.i.minimum.total)],
+    ['Не закрыт', sent.filter((x) => x.i.minimum && x.i.minimum.hit < x.i.minimum.total)], ['Нет корзин', sent.filter((x) => !x.i.minimum)]].filter(([, l]) => l.length);
+  const speeds = [['≤ 3 дней', 'fast'], ['4–7 дней', 'mid'], ['> 7 дней', 'late'], ['Нет даты', 'none']]
+    .map(([l, k]) => [l, sent.filter((x) => speedBucket(applySpeed(x.i)) === k)]).filter(([, l]) => l.length);
   const pkgYes = sent.filter((x) => x.i.sent.package);
   const pkgNo = sent.filter((x) => !x.i.sent.package);
 
@@ -2486,6 +2650,7 @@ function statsView() {
     <div class="banner hyp ${fitHi.length >= MIN_N && fitLo.length >= MIN_N ? 'info' : ''}"><p>${hypothesis}</p></div>
 
     <section class="card week-card" id="weekCard"><p class="muted small" style="margin:0"><span class="spin"></span>Считаю неделю…</p></section>
+    ${silenceBlock(sent)}
     ${reasonsSection(items)}
     <div class="stats-grid">
       <section class="card"><h3 class="st-h">Воронка</h3>
@@ -2503,6 +2668,18 @@ function statsView() {
         <div class="table-box flat"><table class="apps">${head}<tbody>
           ${sliceRows([[`Фит ${FIT_THRESHOLD}+`, fitHi], [`Фит ниже ${FIT_THRESHOLD}`, fitLo], ['Фит не оценён', fitNone]])}</tbody></table></div>
       </section>
+      <section class="card"><h3 class="st-h">Минимум вакансии закрыт</h3>
+        <div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(minimums)}</tbody></table></div>
+        <p class="muted small" style="margin:8px 0 0">По корзинам требований (V2) — у вакансий, оценённых после 31 октября; остальные — «нет корзин».</p>
+      </section>
+      <section class="card"><h3 class="st-h">По формату работы</h3>
+        <div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(formats)}</tbody></table></div>
+        ${formats.length > 1 ? '<p class="muted small" style="margin:8px 0 0">По Huntr: на remote приглашают почти вдвое реже, чем на hybrid (3,5% против 6%).</p>' : ''}
+      </section>
+      <section class="card"><h3 class="st-h">По скорости подачи</h3>
+        <div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(speeds)}</tbody></table></div>
+        <p class="muted small" style="margin:8px 0 0">Дни от публикации до отправки; без даты публикации — от добавления в приложение.</p>
+      </section>
       <section class="card"><h3 class="st-h">По каналу</h3>
         ${channels.length ? `<div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(channels)}</tbody></table></div>`
           : '<p class="muted small" style="margin:0">Появится после первой отметки отправки.</p>'}
@@ -2518,6 +2695,10 @@ function statsView() {
       <section class="card"><h3 class="st-h">Адаптированное CV или базовое</h3>
         <div class="table-box flat"><table class="apps">${head}<tbody>
           ${sliceRows([['С пакетом (адаптированное CV)', pkgYes], ['Без пакета (базовое CV)', pkgNo]])}</tbody></table></div>
+      </section>
+      <section class="card"><h3 class="st-h">С сообщением к отклику или без</h3>
+        <div class="table-box flat"><table class="apps">${head}<tbody>
+          ${sliceRows([['Сообщение сделано', sent.filter((x) => x.i.hasApplyMsg)], ['Без сообщения', sent.filter((x) => !x.i.hasApplyMsg)]].filter(([, l]) => l.length))}</tbody></table></div>
       </section>
       <section class="card"><h3 class="st-h">С контактом в компании или без</h3>
         <div class="table-box flat"><table class="apps">${head}<tbody>

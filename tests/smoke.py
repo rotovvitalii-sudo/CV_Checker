@@ -118,6 +118,15 @@ def api(base):
         code, _, body = get(base, f"/api/vacancies/{q(it['name'])}")
         if ok(code == 200, f"заявка {it['name']} → {code}"):
             details.append(json.loads(body))
+            d = details[-1]
+            # V2: корзины требований в разборе; V1: сообщение к отклику — с проверкой
+            ok("minimum" in it and "hasApplyMsg" in it, f"заявка {it['name']}: в списке нет minimum / hasApplyMsg")
+            bk = (d.get("brief") or {}).get("buckets")
+            if bk:
+                ok(all(g["hit"] <= g["total"] for g in bk["groups"]), f"корзины {it['name']}: hit > total")
+            m = d.get("applyMessage")
+            if m:
+                ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")
         # C11: состояние формы на сайте — только чтение (разбор формы тест не запускает)
         code, _, body = get(base, f"/api/vacancies/{q(it['name'])}/form")
         if ok(code == 200, f"форма {it['name']} → {code}"):

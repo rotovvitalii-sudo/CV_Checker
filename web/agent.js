@@ -26,6 +26,7 @@ const JOB_TITLES = {
   practice: ['Оценка ответа готова', 'Оценка ответа не получилась'],
   voice: ['Голосовой профиль обновлён', 'Голосовой профиль не собрался'],
   fitquick: ['Фит оценён', 'Оценка фита не удалась'],
+  applymsg: ['Сообщение к отклику готово', 'Сообщение к отклику не получилось'],
 };
 function jobLink(job) {
   const t = job.vacancy || job.target;
@@ -101,7 +102,7 @@ function emit(job, ev) {
 const MODELS_FILE = path.join(ROOT, 'web', 'data', 'agent-models.json');
 const MODEL_CHOICES = ['haiku', 'sonnet', 'opus', 'default'];
 const TASKS = {
-  fit: ['Оценка фита подробно (агент)', 'sonnet'], fitquick: ['Быстрый фит (один ход)', 'haiku'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
+  fit: ['Оценка фита подробно (агент)', 'sonnet'], fitquick: ['Быстрый фит (один ход)', 'haiku'], applymsg: ['Сообщение к отклику (один ход)', 'haiku'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
   casescan: ['Поиск фактов в надиктовках', 'haiku'], edtech: ['Расширение базы компаний', 'haiku'],
   tailor: ['Адаптация CV', 'sonnet'], letter: ['Письмо из надиктовки', 'sonnet'], lettergen: ['Сгенерированное письмо', 'sonnet'],
   outline: ['Структура письма', 'sonnet'], answers: ['Ответы на вопросы формы', 'sonnet'], verdict: ['Вердикт рекрутера', 'sonnet'], outreach: ['Первое сообщение контакту', 'sonnet'], interview: ['Подготовка к собеседованию', 'sonnet'], practice: ['Тренажёр собеседования', 'sonnet'],

@@ -33,6 +33,8 @@ ${src}
 - \`what_you_do\` — 3–5 главных обязанностей из текста вакансии, короткими фразами на языке вакансии,
   без пересказа требований к кандидату;
 - \`date_posted\` — дата публикации в формате YYYY-MM-DD, только если она есть в тексте или на странице; иначе "".
+Плюс поля «что болит» и корзины требований:
+${PAIN_SCHEMA}
 Затем запусти:
 ${save}
 
@@ -43,6 +45,13 @@ ${KEYWORDS_STEP(vacName, true)}`;
 // (разделы 2, 4, 5 job-fit-search-brief.md), профиль поиска и реестр карточек; модель возвращает один JSON,
 // дальше — score_job.py add и ключевые слова на сервере. Сверено с агентным фитом Sonnet на 22 вакансиях:
 // средняя разница балла 0.6, решение «7+ / ниже» совпало в 21 из 22, ≈ $0.003 против ≈ $0.33.
+// V2 (docs/specs/31-vacancy-pain.md): «что болит», тип ситуации и три корзины требований — в обоих фитах
+const PAIN_SCHEMA = `"pain": "одна фраза ПО-РУССКИ: что болит и зачем открыли роль — по первым 3–4 обязанностям и требованиям и тому, что повторяется разными словами; не видно, зачем открыли роль — пустая строка",
+"situation": одно значение — "build_from_scratch (с нуля, построить процесс) | fix_chaos (навести порядок, перестроить) | scale (масштабировать работающее) | maintain (поддерживать, развивать существующее) | unclear",
+"buckets": {"minimum": [{"req": "коротко по-русски", "kw": "ключ на языке вакансии; синонимы через |"}], "desired": [то же], "wishlist": [то же]} —
+minimum: 3–6 пунктов, без которых не возьмут (первые строки требований, повторы, «must/required»), «будет плюсом» сюда нельзя;
+desired: «plus / nice to have / preferred»; wishlist: длинные перечни инструментов и доменов. kw — так, как это написал бы кандидат в CV.`;
+
 const FIT_QUICK_SYSTEM = 'Ты оцениваешь фит вакансии для одного кандидата по заданной рубрике. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
 function fitQuick({ briefText, profile, cardsIndex, vacancy }) {
@@ -75,7 +84,7 @@ ${vacancy.slice(0, 14000)}
 "why": "2–3 предложения ПО-РУССКИ (не на языке вакансии), почему такой фит",
 "anchor_card": "id или null", "anchor_case": "одна фраза по-русски", "gaps": ["требования вакансии, которых нет в карточках — по-русски"],
 "keywords": {"must": ["10–18 ключевых слов/фраз из вакансии на её языке; синонимы через |, например \\"customer education|client education\\""], "nice": ["6–12"]},
-"requirements": {"must": [{"req": "требование по-русски", "evidence": "что считается доказательством"}], "nice": [{"req": "", "evidence": ""}]}.
+${PAIN_SCHEMA}
 "languages_required" — только языки, без которых не возьмут (не «плюс», не «желательно»; английский не указывай, если он просто рабочий язык вакансии); языки-плюсы — в nice_to_have.
 Дата публикации — только если есть в тексте (YYYY-MM-DD), иначе "". Ничего не выдумывай о вакансии.`;
 }
@@ -94,9 +103,16 @@ function keywords({ name }) {
 ${KEYWORDS_STEP(name, false)}`;
 }
 
-function tailor({ name }) {
-  return `${BACKGROUND}
+// V2: боль и минимум из фита — в верхнюю треть CV, первую фразу письма и вопросы интервью
+function painBlock(fit, use) {
+  const min = (fit?.buckets?.minimum || []).map((b) => b.req).filter(Boolean);
+  if (!fit?.pain && !min.length) return '';
+  return `\nИз разбора вакансии (быстрый фит, проверь по тексту):${fit.pain ? `\n- Что болит: ${fit.pain}` : ''}${fit.situation && fit.situation !== 'unclear' ? ` (ситуация: ${fit.situation})` : ''}${min.length ? `\n- Минимум требований: ${min.join('; ')}` : ''}\n${use}\n`;
+}
 
+function tailor({ name, fit }) {
+  return `${BACKGROUND}
+${painBlock(fit, 'Верхняя треть CV отвечает на эту боль, минимум — в первых строках (только фактами из базы).')}
 Задача: выполни скил tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`) целиком для \`vacancies/${name}.md\`.
 Если \`output/${name}/01-keywords.json\` содержит \`"source": "quick"\` (черновик быстрого фита) — шаг 1 сделай заново.
 Если \`output/${name}/01-requirements.md\` и \`01-keywords.json\` уже существуют — шаг 1 не переделывай,
@@ -144,9 +160,9 @@ ${files.map((f) => `- \`knowledge-base/raw/${f}\``).join('\n')}
 Фактов об опыте (компании, цифры) в профиле нет — только манера. Вопросы не задавай.`;
 }
 
-function letterGenerate({ name, hasOutline, hasVoice }) {
+function letterGenerate({ name, hasOutline, hasVoice, fit }) {
   return `${BACKGROUND}
-
+${painBlock(fit, 'Первая фраза письма — про эту боль и как ты её уже решал (только факты из базы).')}
 Задача: выполни скил cover-letter-generate (\`.claude/skills/cover-letter-generate/SKILL.md\`) для «${name}».
 - Вакансия: \`vacancies/${name}.md\`
 - CV: \`output/${name}/CV.md\`, отчёты: \`output/${name}/02-match-report.md\`, \`report.md\`
@@ -159,9 +175,9 @@ ${hasVoice ? 'Голос — по профилю `knowledge-base/voice.md` (пр
 }
 
 // W5: подготовка к собеседованию и тренажёр
-function interviewPrep({ name, hasCV }) {
+function interviewPrep({ name, hasCV, fit }) {
   return `${BACKGROUND}
-
+${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «подготовка», для «${name}».
 - Вакансия: \`vacancies/${name}.md\`; CV: ${hasCV ? `\`output/${name}/CV.md\`` : '`knowledge-base/base-cv.md`'}
 - Пробелы: \`output/${name}/02-match-report.md\`, \`report.md\`, \`summary.json\` / \`03-verdict.json\` (вердикт), если есть
@@ -337,4 +353,28 @@ function sectorCompany({ sector, name, careersUrl }) {
 Другие компании не трогай.`;
 }
 
-module.exports = { fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
+// V1 · сообщение к отклику (docs/specs/30-apply-message.md): один ход без инструментов, контекст кладёт сервер
+const APPLY_MSG_SYSTEM = 'Ты пишешь короткое сообщение к отклику на вакансию от лица кандидата, по-английски. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function applyMessage({ vacancy, fit, cv, voice, limit, error, prev }) {
+  const ctx = vacancy ? `Вакансия:\n\"\"\"\n${vacancy.slice(0, 9000)}\n\"\"\"`
+    : `Вакансия (текста нет, только разбор): задача — ${fit.current_task || ''}; что делать — ${(fit.what_you_do || []).join('; ')}`;
+  const pain = fit.pain ? `\nЧто болит у компании (разбор, проверь по тексту): ${fit.pain}` : '';
+  return `${ctx}${pain}
+
+CV кандидата — единственный источник фактов:
+\"\"\"
+${cv.slice(0, 9000)}
+\"\"\"
+${voice ? `\nКак кандидат говорит (голосовой профиль, только манера — факты из него не бери):\n${voice.slice(0, 3000)}\n` : ''}
+Напиши сообщение для поля «message / cover message» формы отклика. Лимит — ${limit} символов вместе с пробелами (целься в 70–90% лимита).
+Структура, 3 части: (1) на какую роль и почему именно эта вакансия — через её задачу, не через комплименты компании;
+(2) один конкретный результат кандидата с цифрой, связанный с главной задачей вакансии; (3) готовность поговорить.
+${limit < 300 ? 'Без приветствия и подписи.' : 'Приветствие — максимум «Hi,» или «Hello,», без подписи.'}
+Правила: каждое число и факт — дословно из CV, ничего не придумывай; не пересказывай CV; без «I'm excited / thrilled / passionate / motivated»,
+без «leverage, delve, robust, seamless, proven track record, I am writing to»; без длинных тире; предложения разной длины, одно короткое.
+${error ? `\nПредыдущий вариант не прошёл проверку: ${error}. Исправь это.\nПредыдущий вариант: ${prev}\n` : prev ? `\nНужен другой вариант, не похожий на прошлый: ${prev}\n` : ''}
+Верни JSON: {"message": "текст сообщения", "facts": [{"text": "факт из сообщения", "source": "CV"}]}`;
+}
+
+module.exports = { applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };
