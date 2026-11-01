@@ -118,6 +118,15 @@ function painBlock(fit, use) {
   return `\nИз разбора вакансии (быстрый фит, проверь по тексту):${fit.pain ? `\n- Что болит: ${fit.pain}` : ''}${fit.situation && fit.situation !== 'unclear' ? ` (ситуация: ${fit.situation})` : ''}${min.length ? `\n- Минимум требований: ${min.join('; ')}` : ''}\n${use}\n`;
 }
 
+// W9: культура компании — топ-3 ценности, их слова и что сказать; меняет акцент и слова, не факты
+function cultureBlock(c, use) {
+  if (!c?.top?.length) return '';
+  return `\nКультура компании ${c.company} (разбор W9, публичные источники):\n${c.top.map((v) => `- ${v.name} — их слова: ${v.their_words.join(', ') || '—'}. ${v.meaning}${v.say?.card ? `\n  Твоя опора: карточка ${v.say.card}${v.say.angle ? ` — ${v.say.angle}` : ''}` : v.say?.gap ? `\n  Своего кейса нет (${v.say.gap}) — не придумывай` : ''}`).join('\n')}
+Их словарь: ${c.vocabulary.join(', ') || '—'}${c.avoid.length ? `\nНе говорить: ${c.avoid.join('; ')}` : ''}
+Культура меняет акцент и слова, но не факты: опыт — только из базы.
+${use}\n`;
+}
+
 function tailor({ name, fit, insights }) {
   return `${BACKGROUND}
 ${painBlock(fit, 'Верхняя треть CV отвечает на эту боль, минимум — в первых строках (только фактами из базы).')}${insightsBlock(insights, 'В CV.md инсайты НЕ попадают. Только в report.md, раздел пробелов: если по пробелу есть инсайт — «по пробелу X есть инсайт insight:<id>: тему знаешь, кейса нет — надиктуй, если делал».')}
@@ -168,9 +177,9 @@ ${files.map((f) => `- \`knowledge-base/raw/${f}\``).join('\n')}
 Фактов об опыте (компании, цифры) в профиле нет — только манера. Вопросы не задавай.`;
 }
 
-function letterGenerate({ name, hasOutline, hasVoice, fit, insights }) {
+function letterGenerate({ name, hasOutline, hasVoice, fit, insights, culture }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Первая фраза письма — про эту боль и как ты её уже решал (только факты из базы).')}${insightsBlock(insights, 'Можно не больше одной фразы точки зрения кандидата из инсайта — в блоке «почему эта компания / этот подход»; в трассировке у неё tag "fact" и sources: ["knowledge-base/insights/<id>.md"].')}
+${painBlock(fit, 'Первая фраза письма — про эту боль и как ты её уже решал (только факты из базы).')}${cultureBlock(culture, 'В письме — одно-два слова или акцента компании там, где они естественно ложатся на твой факт; не перечисляй ценности. В letter-summary.json добавь "culture_used": ["<ценность>", …].')}${insightsBlock(insights, 'Можно не больше одной фразы точки зрения кандидата из инсайта — в блоке «почему эта компания / этот подход»; в трассировке у неё tag "fact" и sources: ["knowledge-base/insights/<id>.md"].')}
 Задача: выполни скил cover-letter-generate (\`.claude/skills/cover-letter-generate/SKILL.md\`) для «${name}».
 - Вакансия: \`vacancies/${name}.md\`
 - CV: \`output/${name}/CV.md\`, отчёты: \`output/${name}/02-match-report.md\`, \`report.md\`
@@ -183,9 +192,9 @@ ${hasVoice ? 'Голос — по профилю `knowledge-base/voice.md` (пр
 }
 
 // W5: подготовка к собеседованию и тренажёр
-function interviewPrep({ name, hasCV, fit, insights }) {
+function interviewPrep({ name, hasCV, fit, insights, culture }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}${insightsBlock(insights, 'Опирайся на инсайты в рискованных вопросах (в hint: «опора: insight <id> — …», для вопросов «что вы думаете о / как бы вы подошли») и в вопросах к компании. В 07-interview.json добавь "insights_used": ["<id>", …] — только реально использованные.')}
+${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}${cultureBlock(culture, '«О себе» и fits историй — с акцентом и словами этих ценностей (факты те же). В 07-interview.json добавь "culture_used": ["<ценность>", …] — только реально использованные.')}${insightsBlock(insights, 'Опирайся на инсайты в рискованных вопросах (в hint: «опора: insight <id> — …», для вопросов «что вы думаете о / как бы вы подошли») и в вопросах к компании. В 07-interview.json добавь "insights_used": ["<id>", …] — только реально использованные.')}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «подготовка», для «${name}».
 - Вакансия: \`vacancies/${name}.md\`; CV: ${hasCV ? `\`output/${name}/CV.md\`` : '`knowledge-base/base-cv.md`'}
 - Пробелы: \`output/${name}/02-match-report.md\`, \`report.md\`, \`summary.json\` / \`03-verdict.json\` (вердикт), если есть
@@ -196,9 +205,9 @@ ${painBlock(fit, 'Используй боль в «почему мы», «что
 }
 
 // Тренажёр: маленький контекст (без чтения базы) — дёшево на каждую попытку
-function practice({ name, question, answer, out }) {
+function practice({ name, question, answer, out, values }) {
   return `${BACKGROUND}
-
+${values?.length ? `\nГлавные ценности компании (W9): ${values.join('; ')}. Добавь в JSON "culture": {"said": [ценности, которые прозвучали в ответе — словами или по смыслу], "missed": [остальные из этих, если к вопросу они подходили]}. На оценку score это не влияет.\n` : ''}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «тренажёр». Базу знаний не читай.
 Вакансия (для контекста роли): \`vacancies/${name}.md\` — только первые 60 строк.
 Вопрос интервьюера: ${JSON.stringify(question)}
@@ -273,9 +282,9 @@ function caseScan({ files, out }) {
 }
 
 // C7: структура для надиктовки письма — подсказки и факты, не текст письма
-function outline({ name, hasCV }) {
+function outline({ name, hasCV, culture }) {
   return `${BACKGROUND}
-
+${cultureBlock(culture, 'В подсказках блоков (по-русски) отметь, где упомянуть ценность компании своим фактом: «они ценят <ценность> — расскажи, как ты …». Фраз письма не пиши. В 04-letter-outline.json добавь "culture_used": ["<ценность>", …].')}
 Задача: выполни скил letter-outline (\`.claude/skills/letter-outline/SKILL.md\`) для «${name}».
 - Вакансия: \`vacancies/${name}.md\`
 - ${hasCV ? `Адаптированное CV: \`output/${name}/CV.md\` (факты сверяй с ним), отчёты \`output/${name}/02-match-report.md\`, \`report.md\`` : 'Адаптированного CV ещё нет — опирайся на `knowledge-base/master-cv.md` и карточки'}
@@ -365,10 +374,11 @@ function sectorCompany({ sector, name, careersUrl }) {
 // V1 · сообщение к отклику (docs/specs/30-apply-message.md): один ход без инструментов, контекст кладёт сервер
 const APPLY_MSG_SYSTEM = 'Ты пишешь короткое сообщение к отклику на вакансию от лица кандидата, по-английски. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
-function applyMessage({ vacancy, fit, cv, voice, limit, error, prev }) {
+function applyMessage({ vacancy, fit, cv, voice, limit, error, prev, culture }) {
   const ctx = vacancy ? `Вакансия:\n\"\"\"\n${vacancy.slice(0, 9000)}\n\"\"\"`
     : `Вакансия (текста нет, только разбор): задача — ${fit.current_task || ''}; что делать — ${(fit.what_you_do || []).join('; ')}`;
-  const pain = fit.pain ? `\nЧто болит у компании (разбор, проверь по тексту): ${fit.pain}` : '';
+  const pain = (fit.pain ? `\nЧто болит у компании (разбор, проверь по тексту): ${fit.pain}` : '')
+    + (culture?.top?.length ? `\nЧто компания ценит (их слова): ${culture.top.map((v) => `${v.name} — ${v.their_words.slice(0, 3).join(', ')}`).join('; ')}. Можно одно их слово там, где оно ложится на факт из CV.` : '');
   return `${ctx}${pain}
 
 CV кандидата — единственный источник фактов:
@@ -497,5 +507,40 @@ ${lessonText}
 """`;
 }
 
-module.exports = { insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- W9 · разбор компании (docs/specs/35-company-research.md) ----------
+function companyResearch({ company, domain, slug, vacancy, url }) {
+  return `${BACKGROUND}
+
+Задача: скил company-research (\`.claude/skills/company-research/SKILL.md\`), режим приложения.
+Компания: ${company}${domain ? `, сайт ${domain}` : ''}${url ? `; ссылка вакансии: ${url}` : ''}.
+Вакансия: \`vacancies/${vacancy}.md\` — её формулировки тоже сигнал.
+Результат — строго \`knowledge-base/companies/${slug}.json\` (slug "${slug}"), одним Write. Больше ничего не пиши.`;
+}
+
+const COMPANY_SAY_SYSTEM = 'Ты сводишь ценности компании с реальным опытом кандидата для подготовки к интервью. Ничего не придумываешь. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function companySay({ research, cv, cards, stories }) {
+  const vals = research.values.map((v) => `- ${v.name} [${v.strength}] — их слова: ${v.their_words.join(', ')}. ${v.meaning}`).join('\n');
+  return `Ценности компании ${research.company} (из публичных источников):
+${vals}
+
+CV кандидата — единственный источник цифр:
+\"\"\"
+${cv.slice(0, 9000)}
+\"\"\"
+
+Карточки опыта (реестр, id — первая колонка):
+${cards.slice(0, 6000)}
+${stories.length ? `\nБанк историй (STAR): ${stories.map((x) => `${x.card}: ${x.title}`).join('; ')}\n` : ''}
+Для каждой ценности со strength high или medium: какая карточка (id из реестра) лучше всего это подтверждает, как это подать
+(angle, по-русски, 1 фраза) и одна фраза по-английски для интервью словами компании (phrase_en: только факты и цифры из CV,
+просто, без leverage / delve / robust / seamless, без длинных тире). Нет подходящей карточки — card: null и gap: «надиктуй кейс про …» (по-русски).
+Не натягивай: слабое совпадение хуже честного пробела.
+"why_company" — 1–2 фразы по-русски от первого лица кандидата («мне близко…», «я строил…»): почему ему эта компания (через их задачу и его опыт), опора для «почему мы».
+
+Верни JSON: {"say": [{"value": "<name ценности дословно>", "card": "<id>|null", "story": "название истории или пусто", "angle": "…", "phrase_en": "…", "gap": ""}],
+"why_company": "…"}`;
+}
+
+module.exports = { companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

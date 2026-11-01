@@ -130,6 +130,12 @@ def api(base):
             bk = (d.get("brief") or {}).get("buckets")
             if bk:
                 ok(all(g["hit"] <= g["total"] for g in bk["groups"]), f"корзины {it['name']}: hit > total")
+            # W9: разбор компании — у каждой ценности есть доказательство со ссылкой, цитаты ≤ 15 слов
+            cr = d.get("companyResearch")
+            if cr:
+                for v in cr["research"]["values"]:
+                    ok(bool(v.get("evidence")), f"компания {it['name']}: ценность «{v.get('name')}» без доказательств")
+                    ok(all(len(e.get("quote", "").rstrip("…").split()) <= 15 for e in v.get("evidence", [])), f"компания {it['name']}: цитата длиннее 15 слов")
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")

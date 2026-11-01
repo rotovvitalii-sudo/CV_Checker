@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -525,6 +525,7 @@ function renderDetail() {
       <h2><span class="n">3</span>Сопроводительное письмо</h2>
       ${letterBusy || jLetter?.state === 'error' ? jobBlock(jLetter) : ''}
       ${d.letterText ? letterBody(d) : ''}
+      ${companyBlock(d, 'letter')}
       ${outlineBlock(d, d.jobs.outline)}
       <div class="${d.letterText ? 'hint' : ''}" style="margin:${d.letterText ? '14px 0 6px' : '0 0 6px'}">${d.letterText ? 'Надиктовка (можно поправить и пересобрать):' : 'Надиктуй по-русски, что хочешь сказать: почему эта компания, какую историю рассказать, чем закрыть риски. Агент переведёт и выстроит, ≥80% слов останутся твоими.'}</div>
       <div class="dict">
@@ -557,7 +558,89 @@ function renderDetail() {
   for (const j of [jFit, jTailor, jLetter, jKw, d.jobs.answers, d.jobs.outline, d.jobs.verdict, d.jobs.interview]) if (j) attachFeed(j);
   bindVerdict(d);
   bindApplyMsg(d);
+  bindCompany(d);
   if (d.jobs.applymsg) attachFeed(d.jobs.applymsg);
+}
+
+// ---------- W9 · разбор компании (docs/specs/35-company-research.md) ----------
+const STRENGTH_LABEL = { high: ['сильный', 'good'], medium: ['средний', 'info'], low: ['слабый', 'neutral'] };
+function companyMust(cr, say) {
+  const r = cr.research;
+  return say.mustMention.map((n) => {
+    const v = r.values.find((x) => x.name === n);
+    const it = say.say.find((x) => x.value === n);
+    if (!v) return '';
+    return `<li><strong>${esc(v.name)}</strong> <span class="muted small">— их слова: ${v.their_words.map(esc).join(', ') || '—'}</span>
+      ${it?.card ? `<div class="small">Опора: <a href="#/cases/card/${enc(it.card)}">${esc(it.story || it.card)}</a>${it.angle ? ` — ${esc(it.angle)}` : ''}</div>
+        ${it.phrase_en ? `<div class="small co-phrase">«${esc(it.phrase_en)}»</div>` : ''}${(it.issues || []).length ? `<div class="warn-text small">${it.issues.map(esc).join('; ')}</div>` : ''}`
+        : `<div class="warn-text small">${esc(it?.gap || 'нет кейса')} — <a href="#/cases/new">надиктовать</a></div>`}</li>`;
+  }).join('');
+}
+
+function companyFull(cr, say) {
+  const r = cr.research, sn = r.snapshot;
+  return `<details class="more"><summary>Полный разбор · ${r.values.length} ценностей · ссылок ${r.links ? `${r.links.ok}/${r.links.total} открываются` : r.sources.length}</summary>
+    ${sn.what ? `<p class="small" style="margin:6px 0">${esc(sn.what)}${sn.stage ? ` <span class="muted">· ${esc(sn.stage)}</span>` : ''}</p>` : ''}
+    ${[['Продукт', sn.product], ['Клиенты', sn.customers], ['Рынок', sn.market]].filter(([, v]) => v).map(([k, v]) => `<div class="small"><span class="muted">${k}:</span> ${esc(v)}</div>`).join('')}
+    <ol class="co-values">${r.values.map((v) => {
+      const it = say?.say.find((x) => x.value === v.name);
+      const [lbl, cls] = STRENGTH_LABEL[v.strength];
+      return `<li><strong>${esc(v.name)}</strong> <span class="pill ${cls}">${lbl} · источников ${v.sources_count}</span>${v.unverified ? ' <span class="pill warn">ссылки не открылись</span>' : ''}
+        <div class="small">${esc(v.meaning)}</div>
+        <ul class="tight small">${v.evidence.map((e) => `<li>«${esc(e.quote)}» — <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.where || 'источник')}</a>${e.ok === false ? ' <span class="muted">(не открылась)</span>' : ''}</li>`).join('')}</ul>
+        ${it ? (it.card ? `<div class="small muted">Опора: ${esc(it.card)}${it.angle ? ` — ${esc(it.angle)}` : ''}</div>` : `<div class="small warn-text">${esc(it.gap)}</div>`) : ''}</li>`;
+    }).join('')}</ol>
+    ${(r.sources || []).length ? `<details class="more"><summary>Источники · ${r.sources.length}</summary><ul class="tight small">${r.sources.map((x) => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a></li>`).join('')}</ul></details>` : ''}
+    ${r.notes ? `<p class="muted small">${esc(r.notes)}</p>` : ''}</details>`;
+}
+
+// mode: letter — кратко (что упомянуть и их слова); interview — шпаргалка на один экран
+function companyBlock(d, mode) {
+  if (!d.hasVacancy || !d.hasVacancyText) return '';
+  const cr = d.companyResearch, say = cr?.say;
+  const jc = d.jobs.company, js = d.jobs.companysay;
+  const running = jobBusy(jc) ? 'Собираю разбор компании: сайт, блог, выступления, новости… 2–3 минуты'
+    : jobBusy(js) ? 'Свожу ценности компании с твоими карточками…' : '';
+  const err = !running && [jc, js].find((j) => j?.state === 'error');
+  const btn = !cr ? `<button type="button" class="small ${mode === 'letter' ? '' : 'primary'}" data-company="run">Разобрать компанию</button>
+      <span class="hint" style="margin:0">Агент с поиском, ≈ $0.3–0.6, 2–3 мин. Разбор хранится ${d.companyDays || 30} дней и годится для всех вакансий компании.</span>`
+    : !say || cr.stale ? `<button type="button" class="small primary" data-company="run">Свести с моим опытом</button>
+      <span class="hint" style="margin:0">Разбор компании уже есть${cr.research.ageDays ? ` (${cr.research.ageDays} дн.)` : ''} — подобрать твои истории, ≈ $0.003.</span>`
+    : `<button type="button" class="link-btn inline" data-company="refresh" title="Заново: поиск по источникам, ≈ $0.3–0.6">обновить разбор</button>
+      <span class="muted small">${cr.research.ageDays ? `разбор от ${esc(cr.research.at)}` : 'разбор сегодня'}${cr.research.confidence === 'low' ? ' · мало источников, уверенность низкая' : ''}</span>`;
+  const head = `<div class="row" style="gap:8px">${running ? `<span class="running small"><span class="spin"></span>${running}</span>` : btn}</div>
+    ${err ? `<p class="error small">${esc(err.error)}</p>` : ''}`;
+  if (!cr || !say) {
+    return `<section class="iv-sec co-sec"><h3 class="st-h">Компания${cr ? `: ${esc(cr.research.company)}` : ''}</h3>
+      ${mode === 'letter' && !cr ? '<p class="muted small" style="margin:0 0 6px">Что компания ценит и какими словами — чтобы письмо и отклик звучали на её языке.</p>' : ''}${head}</section>`;
+  }
+  const r = cr.research;
+  const vocab = r.vocabulary.length ? `<div class="row co-vocab">${r.vocabulary.map((w) => `<span class="chip">${esc(w)}</span>`).join('')}</div>` : '';
+  if (mode === 'letter') {
+    return `<section class="iv-sec co-sec"><h3 class="st-h">Компания: ${esc(r.company)} — что они ценят</h3>
+      <ul class="tight co-must">${companyMust(cr, say)}</ul>
+      <p class="muted small" style="margin:6px 0 2px">Их слова (одно-два в письме и отклике — там, где ложатся на твой факт):</p>${vocab}
+      <p class="muted small" style="margin:6px 0">Учитывается в структуре письма, сгенерированном письме и сообщении к отклику. Шпаргалка — в блоке «Собеседование».</p>
+      ${head}</section>`;
+  }
+  return `<section class="iv-sec co-sec"><h3 class="st-h">Компания: ${esc(r.company)} — шпаргалка перед звонком</h3>
+    ${say.why_company ? `<p class="small" style="margin:0 0 8px"><strong>Почему эта компания:</strong> ${esc(say.why_company)}</p>` : ''}
+    <h4>Обязательно упомянуть</h4><ul class="tight co-must">${companyMust(cr, say)}</ul>
+    <h4>Их слова</h4>${vocab}
+    ${r.avoid.length ? `<h4>Не говорить</h4><ul class="tight small">${r.avoid.map((a) => `<li>${esc(a.what)}${a.why ? ` <span class="muted">— ${esc(a.why)}</span>` : ''}</li>`).join('')}</ul>` : ''}
+    ${r.ask.length ? `<h4>Спросить</h4><ul class="tight small">${r.ask.map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}
+    ${r.snapshot.news.length ? `<h4>Свежие новости</h4><ul class="tight small">${r.snapshot.news.map((n) => `<li>${n.date ? `<span class="muted">${esc(n.date)}</span> ` : ''}${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join('')}</ul>` : ''}
+    ${companyFull(cr, say)}
+    ${head}</section>`;
+}
+
+function bindCompany(d) {
+  document.querySelectorAll('[data-company]').forEach((b) => b.addEventListener('click', () => {
+    const refresh = b.dataset.company === 'refresh';
+    if (refresh && !confirm('Собрать разбор компании заново? Агент с поиском, ≈ $0.3–0.6. Подойдёт и для других вакансий этой компании.')) return;
+    startStep('company', { refresh });
+  }));
+  for (const k of ['company', 'companysay']) if (d.jobs[k]) attachFeed(d.jobs[k]);
 }
 
 // V1 · короткое сообщение к отклику (docs/specs/30-apply-message.md)
@@ -1388,6 +1471,8 @@ function interviewBlock(d) {
     <section class="iv-sec"><h3 class="st-h">Рискованные вопросы</h3>
       <ul class="tight">${P.risky.map((r) => `<li><strong>${esc(r.q)}</strong><div class="muted small">${esc(r.why)}${r.hint ? ` · опора: ${esc(r.hint)}` : ''}</div></li>`).join('')}</ul></section>
     <section class="iv-sec"><h3 class="st-h">Вопросы к компании</h3><ul class="tight">${(P.ask || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ul></section>
+    ${companyBlock(d, 'interview')}
+    ${(P.culture_used || []).length ? `<p class="muted small" style="margin:-4px 0 10px">С акцентом на ценности компании: ${P.culture_used.map(esc).join(', ')}</p>` : ''}
     ${(P.insights_used || []).length ? `<p class="muted small" style="margin:-4px 0 10px">Опора на твои инсайты: ${P.insights_used.map((id) => `<a href="#/cases/insights">${esc(id.replace(/^\d{4}-\d{2}-\d{2}-/, ''))}</a>`).join(', ')}</p>` : ''}
     ${topicsSection(d)}
     <section class="iv-sec trainer"><h3 class="st-h">Тренажёр — голосом, по одному вопросу до сильного ответа</h3>
@@ -1403,6 +1488,7 @@ function interviewBlock(d) {
       ${pbusy ? `<div class="running small"><span class="spin"></span>Интервьюер слушает…</div>` : pjob?.state === 'error' ? `<p class="error">${esc(pjob.error)}</p>` : ''}
       ${last ? `<div class="attempt"><div class="row" style="gap:8px"><strong>Попытка ${attempts.length}: ${last.score}/4</strong>
           ${['example', 'own_role', 'decision', 'result'].map((k) => `<span class="chip ${last.criteria?.[k] ? 'good' : 'bad'}">${{ example: 'пример', own_role: 'моя роль', decision: 'решение', result: 'результат' }[k]}</span>`).join('')}</div>
+        ${last.culture ? `<div class="row small" style="gap:6px;margin-top:6px"><span class="muted">Ценности компании:</span>${(last.culture.said || []).map((v) => `<span class="chip good">${esc(v)}</span>`).join('')}${(last.culture.missed || []).map((v) => `<span class="chip bad" title="не прозвучало">${esc(v)}</span>`).join('')}</div>` : ''}
         ${(last.missing || []).length ? `<p class="small" style="margin:6px 0 2px">Не хватило:</p><ul class="tight small">${last.missing.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
         ${(last.followups || []).map((f) => `<div class="row small" style="gap:6px;margin-top:4px"><span>↳ ${esc(f)}</span><button type="button" class="link-btn inline" data-follow="${esc(f)}">ответить на уточнение</button></div>`).join('')}
         ${attempts.length > 1 ? `<p class="muted small" style="margin:6px 0 0">Попытки: ${attempts.map((a) => `${a.score}/4`).join(' → ')}</p>` : ''}</div>` : ''}
@@ -1954,7 +2040,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -3793,6 +3879,9 @@ function renderProfile(pr, answers, canRevert, cal) {
         <label for="pfTopicDays">Тема сдана на</label>
         <div class="row"><input id="pfTopicDays" type="number" min="7" max="365" step="1" style="width:90px" value="${pr.topic_valid_days ?? 90}">
           <span class="hint" style="margin:0">дней сданная тема подготовки к интервью засчитывается во всех вакансиях, потом — пересдать</span></div>
+        <label for="pfCoDays">Разбор компании годен</label>
+        <div class="row"><input id="pfCoDays" type="number" min="1" max="365" step="1" style="width:90px" value="${pr.company_research_days ?? 30}">
+          <span class="hint" style="margin:0">дней — потом «Разобрать компанию» соберёт заново; до этого другие вакансии компании берут готовый</span></div>
         <label for="pfVidMin">Видео к уроку</label>
         <div class="row"><span class="hint" style="margin:0">до</span>
           <input id="pfVidMin" type="number" min="1" max="120" step="1" style="width:70px" value="${pr.video_rules?.max_minutes ?? 10}"><span class="hint" style="margin:0">мин, не старше</span>
@@ -3878,6 +3967,7 @@ function bindProfile(answers) {
       onsite_locations: listOf($('#pfLoc').value), languages: listOf($('#pfLang').value),
       min_salary: { amount: $('#pfSal').value, currency: $('#pfCur').value, period: $('#pfPer').value },
       no_reply_days: $('#pfNoReply').value, topic_valid_days: $('#pfTopicDays').value,
+      company_research_days: $('#pfCoDays').value,
       video_rules: { max_minutes: $('#pfVidMin').value, max_years: $('#pfVidYears').value, min_views: $('#pfVidViews').value }, exclude_us_only: $('#pfNoUS').checked,
     };
     $('#pfSave').disabled = true;

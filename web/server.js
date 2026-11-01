@@ -21,6 +21,7 @@ const autofill = require('./autofill');
 const alive = require('./alive');
 const learning = require('./learning');
 const insights = require('./insights');
+const company = require('./company');
 const targets = require('./targets');
 const money = require('./money');
 const answerLib = require('./answer-lib');
@@ -104,6 +105,8 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.cardRefs = cardRefs(name, info);
   info.interview = readInterview(name);
   info.topics = topicsInfo(name);
+  info.companyResearch = company.view(store.outDir(name), company.slugify(info.company));
+  info.companyDays = company.validDays();
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
@@ -765,7 +768,7 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
   const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
   const job = runJob({
     kind: 'interview', target: name,
-    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit, insights: vacancyInsights(name) }),
+    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit, insights: vacancyInsights(name), culture: cultureFor(name) }),
     logFile: path.join(dir, 'agent-interview.log'),
     onDone: async () => {
       if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент не записал 07-interview.json');
@@ -775,6 +778,67 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
     },
   });
   attach(name, 'interview', job);
+  res.json({ jobId: job.id });
+}));
+
+// ---------- W9 · разбор компании (docs/specs/35-company-research.md) ----------
+// Разбор — агент с поиском, общий на компанию (кэш 30 дней); «что сказать» под CV вакансии — один ход Haiku
+const CARDS_DIR = path.join(ROOT, 'knowledge-base', 'cards');
+function companyKey(name) {
+  const info = store.vacancyInfo(name);
+  const prev = company.readSay(store.outDir(name));
+  const looksDomain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(String(info.company).trim());
+  return { name: info.company, slug: prev?.slug || company.slugify(info.company), url: info.url,
+    domain: company.domainFrom(info.url) || (looksDomain ? info.company.trim().toLowerCase() : '') };
+}
+const cultureFor = (name) => company.forPrompt(store.outDir(name));
+
+function startCompanySay(name, research) {
+  const dir = store.outDir(name);
+  const cv = applyMsgCv(name);
+  let stories = [];
+  try { stories = JSON.parse(fs.readFileSync(STORIES, 'utf8')).map((x) => ({ card: x.card, title: x.title })).slice(0, 20); } catch {}
+  const cardIds = fs.existsSync(CARDS_DIR) ? fs.readdirSync(CARDS_DIR).filter((f) => f.endsWith('.md') && f !== 'INDEX.md').map((f) => f.slice(0, -3)) : [];
+  fs.mkdirSync(dir, { recursive: true });
+  const job = runJob({ kind: 'companysay', target: name, system: prompts.COMPANY_SAY_SYSTEM,
+    prompt: prompts.companySay({ research, cv: cv.text, cards: readText(path.join(CARDS_DIR, 'INDEX.md')), stories }),
+    logFile: path.join(dir, '09-company.log'),
+    onDone: async (j) => {
+      const say = company.normSay(oneJSON(j.finalText), research, cv.text, cardIds);
+      for (const x of say.say.filter((i) => i.phrase_en)) {
+        const h = await humanizeScore(x.phrase_en);
+        if (h && !h.pass) x.issues.push(`humanizer ${h.score} > 3`);
+      }
+      fs.writeFileSync(company.sayFile(dir), `${JSON.stringify({ ...say, cv: cv.cv }, null, 2)}\n`);
+    } });
+  attach(name, 'companysay', job);
+  return job;
+}
+
+app.post('/api/vacancies/:name/company', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (busy(a, 'company') || busy(a, 'companysay')) return res.status(409).json({ error: 'разбор уже идёт' });
+  if (lacksText(name)) return res.status(400).json({ error: NO_TEXT });
+  const k = companyKey(name);
+  const cached = company.read(k.slug);
+  // Свежий разбор компании уже есть (другая вакансия) — только «что сказать» под это CV, ≈ $0.003
+  if (cached?.fresh && !req.body?.refresh) return res.json({ jobId: startCompanySay(name, cached).id, cached: true });
+  const f = path.join(company.DIR, `${k.slug}.json`);
+  fs.mkdirSync(company.DIR, { recursive: true });
+  const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
+  const job = runJob({ kind: 'company', target: name,
+    prompt: prompts.companyResearch({ company: k.name, domain: k.domain, slug: k.slug, vacancy: name, url: k.url }),
+    logFile: path.join(store.outDir(name), 'agent-company.log'),
+    onDone: async () => {
+      if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент не записал разбор компании');
+      const r = company.normResearch(JSON.parse(fs.readFileSync(f, 'utf8')), { slug: k.slug, company: k.name, domain: k.domain });
+      if (r.values.length < 2) throw new Error(`слишком мало ценностей с доказательствами (${r.values.length})`);
+      company.save(await company.checkLinks(r));
+      startCompanySay(name, company.read(k.slug)); // один ход — не занимает слот агента
+    } });
+  fs.mkdirSync(store.outDir(name), { recursive: true });
+  attach(name, 'company', job);
   res.json({ jobId: job.id });
 }));
 
@@ -1042,13 +1106,14 @@ app.post('/api/vacancies/:name/practice', agentReady, wrap(async (req, res) => {
   const out = path.join(ROOT, outRel);
   const job = runJob({
     kind: 'practice', target: name,
-    prompt: prompts.practice({ name, question, answer, out: outRel }),
+    prompt: prompts.practice({ name, question, answer, out: outRel, values: (cultureFor(name)?.top || []).map((v) => v.name) }),
     logFile: path.join(store.DATA, 'practice', 'agent.log'),
     onDone: async () => {
       let r;
       try { r = JSON.parse(fs.readFileSync(out, 'utf8')); } catch { throw new Error('агент не записал оценку'); }
       fs.mkdirSync(dir, { recursive: true });
-      const rec = { at: new Date().toISOString(), question, answer, score: r.score, criteria: r.criteria || {}, missing: r.missing || [], followups: r.followups || [], parent: req.body.parent || null };
+      const rec = { at: new Date().toISOString(), question, answer, score: r.score, criteria: r.criteria || {}, missing: r.missing || [], followups: r.followups || [], parent: req.body.parent || null,
+        culture: r.culture && (r.culture.said || r.culture.missed) ? { said: (r.culture.said || []).slice(0, 5), missed: (r.culture.missed || []).slice(0, 5) } : null };
       fs.appendFileSync(path.join(dir, '07-practice.jsonl'), `${JSON.stringify(rec)}\n`);
       fs.rmSync(out, { force: true });
     },
@@ -1211,7 +1276,7 @@ async function checkApplyMsg(message, limit, cvText) {
 function applyMsgPrompt(name, limit, cvText, error, prev) {
   const fit = store.app(name).fit || {};
   const vac = readText(path.join(store.VACANCIES, `${name}.md`));
-  return prompts.applyMessage({ vacancy: vac, fit, cv: cvText, voice: readText(VOICE), limit, error, prev });
+  return prompts.applyMessage({ vacancy: vac, fit, cv: cvText, voice: readText(VOICE), limit, error, prev, culture: cultureFor(name) });
 }
 function runApplyMsg(name, limit, cv, error, prev) {
   return runJob({ kind: 'applymsg', target: name, system: prompts.APPLY_MSG_SYSTEM, prompt: applyMsgPrompt(name, limit, cv.text, error, prev),
@@ -1944,7 +2009,7 @@ app.post('/api/vacancies/:name/outline', agentReady, wrap(async (req, res) => {
   const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
   const job = runJob({
     kind: 'outline', target: name,
-    prompt: prompts.outline({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')) }),
+    prompt: prompts.outline({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), culture: cultureFor(name) }),
     logFile: path.join(dir, 'agent-outline.log'),
     onDone: async () => {
       if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент закончил, но 04-letter-outline.json не появился');
@@ -1984,7 +2049,7 @@ app.post('/api/vacancies/:name/letter-generate', agentReady, wrap(async (req, re
   const before = fs.existsSync(letterPath) ? fs.statSync(letterPath).mtimeMs : 0;
   const job = runJob({
     kind: 'lettergen', target: name,
-    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE), fit: store.app(name).fit, insights: vacancyInsights(name) }),
+    prompt: prompts.letterGenerate({ name, hasOutline: fs.existsSync(path.join(dir, '04-letter-outline.json')), hasVoice: fs.existsSync(VOICE), fit: store.app(name).fit, insights: vacancyInsights(name), culture: cultureFor(name) }),
     logFile: path.join(dir, 'agent-lettergen.log'),
     onDone: async () => {
       if (!fs.existsSync(letterPath) || fs.statSync(letterPath).mtimeMs === before) throw new Error('агент закончил, но Cover Letter.md не обновился');
@@ -2375,6 +2440,11 @@ app.put('/api/profile', wrap(async (req, res) => {
     const n = Number(b.topic_valid_days);
     if (!(n >= 7 && n <= 365)) return res.status(400).json({ error: '«Тема сдана на» — от 7 до 365 дней' });
     next.topic_valid_days = Math.round(n);
+  }
+  if (b.company_research_days !== undefined) { // W9: сколько дней разбор компании годится для её вакансий
+    const n = Number(b.company_research_days);
+    if (!(n >= 1 && n <= 365)) return res.status(400).json({ error: '«Разбор компании годен» — от 1 до 365 дней' });
+    next.company_research_days = Math.round(n);
   }
   if (b.video_rules !== undefined) { // W8: фильтр видео к уроку — learning.videoRules()
     const r = b.video_rules || {}, num = (k) => Number(r[k]);
