@@ -958,10 +958,13 @@ function videoRuleMiss(d, title) {
 }
 
 // Агент предлагает основное видео и до 4 запасных; берём первое, что прошло проверку и фильтр
+// Отказ по фильтру (длина, возраст, просмотры, язык) не навсегда: пороги в профиле меняются — такие ссылки проверяются снова
+const RULE_MISS = /^(длиннее|старше|мало просмотров|не на английском)/;
+const hardRejected = (m) => (m.video_rejected || []).filter((x) => !RULE_MISS.test(x.why || ''));
 async function pickVideo(m) {
-  const seen = new Set((m.video_rejected || []).map((x) => x.url));
+  const seen = new Set(hardRejected(m).map((x) => x.url));
   const rejected = [];
-  for (const v of [m.video, ...(Array.isArray(m.video_candidates) ? m.video_candidates : [])].filter((x) => x?.url).slice(0, 5)) {
+  for (const v of [m.video, ...(Array.isArray(m.video_candidates) ? m.video_candidates : [])].filter((x) => x?.url).slice(0, 8)) {
     if (seen.has(v.url)) continue;
     seen.add(v.url);
     const chk = await checkVideo(v);
@@ -1030,7 +1033,7 @@ function videoJob(name, t, bad, keep) {
   const metaFile = path.join(learning.dir(t.slug), 'meta.json');
   const m0 = learning.meta(t.slug) || {};
   const job = runJob({ kind: 'lessonvideo', target: name,
-    prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: learning.videoRules(), rejected: m0.video_rejected || [] }),
+    prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: learning.videoRules(), rejected: hardRejected(m0) }),
     logFile: path.join(learning.dir(t.slug), 'agent-video.log'),
     onDone: async (j) => {
       const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
@@ -1087,6 +1090,15 @@ app.post('/api/vacancies/:name/topics/:slug/video', agentReady, wrap(async (req,
   const metaFile = path.join(learning.dir(t.slug), 'meta.json');
   const m = learning.meta(t.slug);
   if (!m || !learning.lesson(t.slug, 'en')) return res.status(400).json({ error: 'сначала урок' });
+  // Сначала бесплатно: ссылки, которые раньше не прошли только по фильтру, — вдруг теперь проходят
+  if (!m.video) {
+    const again = (m.video_rejected || []).filter((x) => RULE_MISS.test(x.why || ''));
+    const pick = again.length ? await pickVideo({ ...m, video_rejected: hardRejected(m), video: again[0], video_candidates: again.slice(1, 8) }) : null;
+    if (pick?.ok) {
+      writeVideo(t, { ...m, video_rejected: (m.video_rejected || []).filter((x) => x.url !== pick.video.url) }, { ...pick, rejected: [] }, false);
+      return res.json({ ok: true, rechecked: true });
+    }
+  }
   const why = m.video ? 'нужно другое видео — по фильтру' : (m.video_status || 'видео не найдено');
   // Текущее видео — в отклонённые, чтобы агент не вернул его же
   if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: 'заменено вручную' }]) }, null, 2)}\n`);

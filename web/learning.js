@@ -24,7 +24,7 @@ function validDays() {
 
 // Видео к уроку — короткое, свежее, популярное, на английском. Сервер проверяет это сам по странице видео
 // (агенту YouTube длительность и просмотры не отдаёт). Пороги — profile.json → video_rules.
-const VIDEO_RULES = { max_minutes: 10, max_years: 2, min_views: 5000 };
+const VIDEO_RULES = { max_minutes: 20, max_years: 2, min_views: 5000 };
 function videoRules() {
   const r = readJSON(path.join(ROOT, 'knowledge-base', 'profile.json'), {}).video_rules || {};
   const num = (k, lo, hi) => { const n = Number(r[k]); return Number.isFinite(n) && n >= lo && n <= hi ? n : VIDEO_RULES[k]; };
