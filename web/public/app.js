@@ -3946,8 +3946,8 @@ function renderProfile(pr, answers, canRevert, cal) {
         <label for="pfVidMin">Видео к уроку</label>
         <div class="row"><span class="hint" style="margin:0">до</span>
           <input id="pfVidMin" type="number" min="1" max="120" step="1" style="width:70px" value="${pr.video_rules?.max_minutes ?? 20}"><span class="hint" style="margin:0">мин, не старше</span>
-          <input id="pfVidYears" type="number" min="0.5" max="20" step="0.5" style="width:70px" value="${pr.video_rules?.max_years ?? 3}"><span class="hint" style="margin:0">лет, от</span>
-          <input id="pfVidViews" type="number" min="0" step="1000" style="width:100px" value="${pr.video_rules?.min_views ?? 5000}"><span class="hint" style="margin:0">просмотров, на английском</span></div>
+          <input id="pfVidYears" type="number" min="0.5" max="20" step="0.5" style="width:70px" value="${pr.video_rules?.max_years ?? 3.5}"><span class="hint" style="margin:0">лет, от</span>
+          <input id="pfVidViews" type="number" min="0" step="1000" style="width:100px" value="${pr.video_rules?.min_views ?? 4000}"><span class="hint" style="margin:0">просмотров, на английском</span></div>
         <label for="pfSal">Минимальная зарплата</label>
         <div class="row"><input id="pfSal" type="number" min="0" step="any" style="width:160px" value="${ms.amount ?? ''}" placeholder="не задана">
           <select id="pfCur" style="width:auto">${['EUR', 'PLN', 'USD', 'GBP'].map((c) => `<option ${ms.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
