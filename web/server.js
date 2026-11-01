@@ -794,7 +794,8 @@ const oneJSON = (t) => {
   return JSON.parse(s.slice(a, b + 1));
 };
 
-// Видео существует и это то самое: oEmbed отвечает, название похоже на названное агентом
+// Видео существует и это то самое: oEmbed отвечает, название похоже на названное агентом;
+// и проходит фильтр профиля (learning.videoRules): короткое, свежее, с просмотрами, на английском
 async function checkVideo(v) {
   if (!v?.url || !/^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]{6,}/.test(v.url)) return { ok: false, why: 'ссылка не на видео YouTube' };
   try {
@@ -805,8 +806,39 @@ async function checkVideo(v) {
     const A = words(o.title), B = words(v.title);
     const common = [...B].filter((w) => A.has(w)).length;
     if (B.size && common / Math.min(A.size || 1, B.size) < 0.5) return { ok: false, why: `название не совпадает: «${o.title}»` };
-    return { ok: true, title: o.title, channel: o.author_name, details: await videoDetails(v.url) };
+    const details = await videoDetails(v.url);
+    const why = videoRuleMiss(details, o.title);
+    return why ? { ok: false, why } : { ok: true, title: o.title, channel: o.author_name, details };
   } catch (e) { return { ok: false, why: `oEmbed недоступен: ${e.message}` }; }
+}
+
+// Пусто — фильтр пройден; иначе причина по-русски. Не удалось прочитать страницу — тоже отказ: фильтр без данных не проверить
+function videoRuleMiss(d, title) {
+  const R = learning.videoRules();
+  if (!d?.seconds) return 'не удалось прочитать длительность';
+  if (d.seconds > R.max_minutes * 60 + 30) return `длиннее ${R.max_minutes} мин (${d.minutes} мин)`;
+  if (!d.published) return 'не удалось прочитать дату публикации';
+  const years = (Date.now() - Date.parse(d.published)) / (365.25 * 864e5);
+  if (years > R.max_years) return `старше ${R.max_years} лет (${d.published.slice(0, 10)})`;
+  if (d.views == null) return 'не удалось прочитать число просмотров';
+  if (d.views < R.min_views) return `мало просмотров (${d.views.toLocaleString('ru-RU')} < ${R.min_views.toLocaleString('ru-RU')})`;
+  // Язык речи — по автоматическим субтитрам (a.xx); их нет — по названию: латиница без кириллицы и т.п.
+  if (d.lang ? !/^en/.test(d.lang) : /[^\x00-\x7F\u2010-\u201F\u2026\u00A0-\u00FF]{3,}/.test(title || '')) return `не на английском${d.lang ? ` (${d.lang})` : ''}`;
+  return '';
+}
+
+// Агент предлагает основное видео и до 4 запасных; берём первое, что прошло проверку и фильтр
+async function pickVideo(m) {
+  const seen = new Set((m.video_rejected || []).map((x) => x.url));
+  const rejected = [];
+  for (const v of [m.video, ...(Array.isArray(m.video_candidates) ? m.video_candidates : [])].filter((x) => x?.url).slice(0, 5)) {
+    if (seen.has(v.url)) continue;
+    seen.add(v.url);
+    const chk = await checkVideo(v);
+    if (chk.ok) return { ...chk, video: v, rejected };
+    rejected.push({ url: v.url, title: v.title || '', why: chk.why });
+  }
+  return { ok: false, why: rejected.length ? rejected.map((x) => x.why).join('; ') : 'видео не найдено', rejected };
 }
 
 app.post('/api/vacancies/:name/topics', agentReady, wrap(async (req, res) => {
@@ -839,20 +871,51 @@ async function videoDetails(url) {
     const h = await r.text();
     const str = (re) => { const m = h.match(re); try { return m ? JSON.parse(`"${m[1]}"`) : ''; } catch { return ''; } };
     const len = Number((h.match(/"lengthSeconds":"(\d+)"/) || [])[1]) || 0;
+    const views = h.match(/"viewCount":"(\d+)"/);
+    // Язык речи — по автосубтитрам; у видео с автодубляжом их много, и английский среди них — значит оригинал, скорее всего, английский
+    const asr = [...h.matchAll(/"vssId":"a\.([\w-]+)"/g)].map((x) => x[1]);
+    const lang = asr.length > 1 && asr.some((x) => /^en/.test(x)) ? 'en' : asr[0] || null;
     const chapters = [...h.matchAll(/"chapterRenderer":\{"title":\{"simpleText":"((?:[^"\\]|\\.)*)"/g)].map((m) => { try { return JSON.parse(`"${m[1]}"`); } catch { return ''; } })
       .filter(Boolean);
     return { description: str(/"shortDescription":"((?:[^"\\]|\\.)*)"/).slice(0, 2500), minutes: len ? Math.max(1, Math.round(len / 60)) : null,
-      chapters: [...new Set(chapters)].slice(0, 30) };
+      chapters: [...new Set(chapters)].slice(0, 30), seconds: len || null, views: views ? Number(views[1]) : null,
+      published: (h.match(/"publishDate":"([^"]+)"/) || [])[1] || null, lang };
   } catch { return {}; }
 }
 
-function writeVideo(t, m, chk, retrying) {
-  const next = { ...m, slug: t.slug, title_en: m.title_en || t.title_en, title_ru: m.title_ru || t.title_ru,
-    video: chk.ok ? { ...m.video, title: chk.title, channel: m.video.channel || chk.channel, ...chk.details,
-      minutes: chk.details?.minutes || m.video.minutes || null } : null,
-    video_status: chk.ok ? 'ok' : retrying ? `ищу другое видео (${chk.why})` : chk.why, checked: new Date().toISOString() };
-  if (!chk.ok && m.video) next.video_rejected = [...(m.video_rejected || []), { url: m.video.url, why: chk.why }];
+function writeVideo(t, m, pick, retrying) {
+  const { video_candidates, ...rest } = m;
+  const next = { ...rest, slug: t.slug, title_en: m.title_en || t.title_en, title_ru: m.title_ru || t.title_ru,
+    video: pick.ok ? { ...pick.video, title: pick.title, channel: pick.video.channel || pick.channel, ...pick.details,
+      minutes: pick.details?.minutes || pick.video.minutes || null } : null,
+    video_status: pick.ok ? 'ok' : retrying ? `ищу другое видео (${pick.why})` : pick.why, checked: new Date().toISOString() };
+  if (pick.rejected.length) next.video_rejected = addRejected(m.video_rejected, pick.rejected);
   fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
+}
+
+const addRejected = (old, add) => { const seen = new Set((old || []).map((x) => x.url)); return [...(old || []), ...add.filter((x) => !seen.has(x.url) && seen.add(x.url))]; };
+
+// Повторный поиск видео: агент возвращает кандидатов JSON-ом, файл пишет сервер (в фоне агенту скрипты запрещены)
+function videoJob(name, t, bad, keep) {
+  const metaFile = path.join(learning.dir(t.slug), 'meta.json');
+  const m0 = learning.meta(t.slug) || {};
+  const job = runJob({ kind: 'lessonvideo', target: name,
+    prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: learning.videoRules(), rejected: m0.video_rejected || [] }),
+    logFile: path.join(learning.dir(t.slug), 'agent-video.log'),
+    onDone: async (j) => {
+      const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+      let c = [];
+      try { c = (oneJSON(j.finalText).candidates || []).filter((x) => x?.url); } catch {}
+      const pick = await pickVideo({ ...m, video: c[0] || null, video_candidates: c.slice(1) });
+      // Ничего не прошло — прежнее видео (если было) остаётся, а не пропадает
+      if (!pick.ok && keep) {
+        fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video: keep, video_status: `другое не нашлось: ${pick.why}`,
+          video_rejected: addRejected(m.video_rejected, pick.rejected), checked: new Date().toISOString() }, null, 2)}\n`);
+      } else writeVideo(t, m, pick, false);
+    } });
+  job.topic = t.slug;
+  attach(name, 'lessonvideo', job);
+  return job;
 }
 
 app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req, res) => {
@@ -867,30 +930,37 @@ app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req
   const before = fs.existsSync(lessonFile) ? fs.statSync(lessonFile).mtimeMs : 0;
   const job = runJob({
     kind: 'lesson', target: name,
-    prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: name, why: t.why }),
+    prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: name, why: t.why, rules: learning.videoRules() }),
     logFile: path.join(d, 'agent-lesson.log'),
     onDone: async () => {
       if (!fs.existsSync(lessonFile) || fs.statSync(lessonFile).mtimeMs === before) throw new Error('агент не записал урок');
       fs.rmSync(path.join(d, 'lesson.ru.md'), { force: true }); // перевод старого урока больше не верен
       fs.rmSync(path.join(d, 'test-current.json'), { force: true });
       const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
-      const chk = m.video ? await checkVideo(m.video) : { ok: false, why: 'видео не найдено' };
-      writeVideo(t, m, chk, !chk.ok && !!m.video);
-      // Ссылка не прошла — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
-      if (!chk.ok && m.video) {
-        const j2 = runJob({ kind: 'lessonvideo', target: name, prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad: chk.why }),
-          logFile: path.join(d, 'agent-video.log'),
-          onDone: async () => {
-            const m2 = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
-            writeVideo(t, m2, m2.video ? await checkVideo(m2.video) : { ok: false, why: 'видео не найдено' }, false);
-          } });
-        j2.topic = t.slug;
-        attach(name, 'lessonvideo', j2);
-      }
+      const pick = await pickVideo(m);
+      writeVideo(t, m, pick, !pick.ok && pick.rejected.length > 0);
+      // Ни одно не прошло — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
+      if (!pick.ok && pick.rejected.length) videoJob(name, t, pick.why, null);
     },
   });
   job.topic = t.slug;
   attach(name, 'lesson', job);
+  res.json({ jobId: job.id });
+}));
+
+// Другое видео к готовому уроку (старое длинное или не нашлось): поиск по фильтру профиля, урок не трогаем
+app.post('/api/vacancies/:name/topics/:slug/video', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const t = vacancyTopic(name, req.params.slug);
+  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
+  if (busy(store.app(name), 'lessonvideo')) return res.status(409).json({ error: 'видео уже ищется' });
+  const metaFile = path.join(learning.dir(t.slug), 'meta.json');
+  const m = learning.meta(t.slug);
+  if (!m || !learning.lesson(t.slug, 'en')) return res.status(400).json({ error: 'сначала урок' });
+  const why = m.video ? 'нужно другое видео — по фильтру' : (m.video_status || 'видео не найдено');
+  // Текущее видео — в отклонённые, чтобы агент не вернул его же
+  if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: 'заменено вручную' }]) }, null, 2)}\n`);
+  const job = videoJob(name, t, why, m.video);
   res.json({ jobId: job.id });
 }));
 
@@ -2305,6 +2375,13 @@ app.put('/api/profile', wrap(async (req, res) => {
     const n = Number(b.topic_valid_days);
     if (!(n >= 7 && n <= 365)) return res.status(400).json({ error: '«Тема сдана на» — от 7 до 365 дней' });
     next.topic_valid_days = Math.round(n);
+  }
+  if (b.video_rules !== undefined) { // W8: фильтр видео к уроку — learning.videoRules()
+    const r = b.video_rules || {}, num = (k) => Number(r[k]);
+    if (!(num('max_minutes') >= 1 && num('max_minutes') <= 120)) return res.status(400).json({ error: 'Видео: длительность — от 1 до 120 минут' });
+    if (!(num('max_years') >= 0.5 && num('max_years') <= 20)) return res.status(400).json({ error: 'Видео: возраст — от 0,5 до 20 лет' });
+    if (!(num('min_views') >= 0)) return res.status(400).json({ error: 'Видео: просмотры — число от 0' });
+    next.video_rules = { max_minutes: Math.round(num('max_minutes')), max_years: num('max_years'), min_views: Math.round(num('min_views')) };
   }
   if (b.min_salary !== undefined) {
     const amount = b.min_salary.amount === '' || b.min_salary.amount == null ? null : Number(b.min_salary.amount);

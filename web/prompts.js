@@ -437,21 +437,27 @@ ${library.map((t) => `- ${t.slug}: ${t.title_en}`).join('\n') || '(пусто)'}
 "why": {"cv_line": "строка или пункт CV, коротко", "requirement": "требование вакансии, коротко по-русски"}, "priority": "high|medium|low"}]}`;
 }
 
-function topicLesson({ slug, title_en, title_ru, vacancy, why }) {
+// Фильтр видео из профиля — агенту, чтобы искал сразу подходящие; проверяет всё равно сервер
+const videoRulesLine = (r) => (r ? `\nВидео: не длиннее ${r.max_minutes} мин, опубликовано не раньше чем ${r.max_years} г. назад, от ${r.min_views} просмотров, на английском.
+Предложи основное видео и до 4 запасных в \`video_candidates\` — сервер возьмёт первое, что пройдёт фильтр.` : '');
+
+function topicLesson({ slug, title_en, title_ru, vacancy, why, rules }) {
   return `${BACKGROUND}
 
 Задача: скил topic-lesson (\`.claude/skills/topic-lesson/SKILL.md\`), режим приложения.
 Тема: slug \`${slug}\`, «${title_en}» / «${title_ru}».
 Контекст (для акцентов, не для фактов о кандидате): вакансия «${vacancy}»${why?.requirement ? `, требование: ${why.requirement}` : ''}${why?.cv_line ? `, строка CV: ${why.cv_line}` : ''}.
-Запиши \`knowledge-base/learning/${slug}/lesson.en.md\` и \`knowledge-base/learning/${slug}/meta.json\` по схеме скила.`;
+Запиши \`knowledge-base/learning/${slug}/lesson.en.md\` и \`knowledge-base/learning/${slug}/meta.json\` по схеме скила.${videoRulesLine(rules)}`;
 }
 
-function topicVideo({ slug, title_en, bad }) {
+function topicVideo({ slug, title_en, bad, rules, rejected = [] }) {
   return `${BACKGROUND}
 
-Задача: скил topic-lesson (\`.claude/skills/topic-lesson/SKILL.md\`), режим «только видео», тема \`${slug}\` «${title_en}».
-Видео из \`knowledge-base/learning/${slug}/meta.json\` не прошло проверку${bad ? ` (${bad})` : ''}. Найди другое, проверь через oEmbed
-и обнови в meta.json только поле video (или null, если не нашлось); ссылки из \`video_rejected\` не предлагай. Урок не трогай.`;
+Задача: подобрать видео на YouTube к уроку по теме \`${slug}\` «${title_en}» (скил topic-lesson, раздел «Видео»).
+${bad ? `Прошлое видео не подошло: ${bad}.\n` : ''}${rejected.length ? `Не предлагай эти ссылки: ${rejected.map((x) => x.url).join(', ')}.\n` : ''}${videoRulesLine(rules)}
+Ищи WebSearch'ем (по возможности с годом в запросе — нужны свежие). oEmbed, длительность, просмотры и язык проверит сервер — сам не проверяй.
+Файлов не пиши и скриптов не запускай. Ответь только одним JSON:
+{"candidates": [{"url": "https://www.youtube.com/watch?v=…", "title": "…", "channel": "…"}]} — до 5 штук, лучшее первым; не нашлось — пустой список.`;
 }
 
 const TEST_SYSTEM = 'Ты составляешь тест по учебному материалу для подготовки к собеседованию. Отвечай только одним JSON-объектом без пояснений и без markdown.';

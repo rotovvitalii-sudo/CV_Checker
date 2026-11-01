@@ -22,6 +22,15 @@ function validDays() {
   return Number.isFinite(n) && n >= 7 ? Math.round(n) : VALID_DAYS;
 }
 
+// Видео к уроку — короткое, свежее, популярное, на английском. Сервер проверяет это сам по странице видео
+// (агенту YouTube длительность и просмотры не отдаёт). Пороги — profile.json → video_rules.
+const VIDEO_RULES = { max_minutes: 10, max_years: 2, min_views: 5000 };
+function videoRules() {
+  const r = readJSON(path.join(ROOT, 'knowledge-base', 'profile.json'), {}).video_rules || {};
+  const num = (k, lo, hi) => { const n = Number(r[k]); return Number.isFinite(n) && n >= lo && n <= hi ? n : VIDEO_RULES[k]; };
+  return { max_minutes: num('max_minutes', 1, 120), max_years: num('max_years', 0.5, 20), min_views: num('min_views', 0, 1e9) };
+}
+
 const meta = (slug) => readJSON(path.join(dir(slug), 'meta.json'));
 const lesson = (slug, lang = 'en') => readText(path.join(dir(slug), `lesson.${lang}.md`));
 function attempts(slug) {
@@ -120,4 +129,4 @@ function grade(slug, answers) {
 }
 
 module.exports = { LEARN, PASS, QUESTIONS, slugOk, dir, meta, lesson, attempts, status, library, vacancyTopics, topicsFile,
-  normTopics, readiness, normTest, saveTest, publicTest, pastQuestions, grade, validDays };
+  normTopics, readiness, normTest, saveTest, publicTest, pastQuestions, grade, validDays, videoRules, VIDEO_RULES };

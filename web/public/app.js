@@ -1486,14 +1486,18 @@ function renderTopic(d, t, data) {
       ${v ? `<div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${esc(ytId(v.url))}" title="${esc(v.title)}" loading="lazy"
           allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
         <p class="small" style="margin:6px 0"><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
-          <span class="muted">${[v.channel, v.minutes ? `${v.minutes} мин` : ''].filter(Boolean).map(esc).join(' · ')}</span></p>
+          <span class="muted">${[v.channel, v.minutes ? `${v.minutes} мин` : '', v.views ? `${fmtViews(v.views)} просм.` : '', v.published ? new Date(v.published).toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }) : '']
+            .filter(Boolean).map(esc).join(' · ')}</span>
+          ${jobBusy(jv) ? '<span class="muted"><span class="spin"></span>ищу другое…</span>' : '<button type="button" class="link-btn inline" id="tpVideo" title="Короткое, свежее, популярное, на английском — по фильтру профиля">другое видео (≈ $0.2)</button>'}</p>
+        ${m.video_status && m.video_status !== 'ok' ? `<p class="muted small" style="margin:0">${esc(m.video_status)}</p>` : ''}
         ${(v.key_points || []).length ? `<p class="muted small" style="margin:0">Ключевые мысли (по ${v.source === 'transcript' ? 'субтитрам' : 'описанию и главам'}) — по ним будут вопросы:</p>
           <ul class="tight small">${v.key_points.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>`
           : (v.chapters || []).length ? `<details class="more"><summary>Главы · ${v.chapters.length} — по ним и описанию будут 1–2 вопроса</summary><ul class="tight small">${v.chapters.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>`
           : (v.description || '').length >= 200 ? '<p class="muted small" style="margin:0">1–2 вопроса теста — по описанию видео.</p>'
           : '<p class="muted small" style="margin:0">У видео нет глав и описания — вопросы теста только по уроку.</p>'}`
         : jobBusy(jv) ? '<p class="muted small"><span class="spin"></span>Ищу другое видео — первое не прошло проверку…</p>'
-        : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.</p>`}
+        : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.
+            <button type="button" class="link-btn inline" id="tpVideo">поискать ещё (≈ $0.2)</button></p>`}
     </section>
     ${insBlock}
     ${(m.cards || []).length ? `<section><h4>Связь с твоим опытом</h4><ul class="tight small">${m.cards.map((c) => `<li><a href="#/cases/card/${enc(c.id)}">${esc(c.id)}</a> — ${esc(c.where || '')}</li>`).join('')}</ul></section>` : ''}
@@ -1526,6 +1530,8 @@ async function loadTopic(d) {
   for (const k of TOPIC_JOBS) if (d.jobs[k]?.topic === t.slug) attachFeed(d.jobs[k]);
 }
 
+const fmtViews = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.0', '')} млн` : n >= 1e3 ? `${Math.round(n / 1e3)} тыс.` : String(n));
+
 function bindTopic(d, t, data) {
   const base = `/api/vacancies/${enc(d.name)}/topics/${enc(t.slug)}`;
   $('#tpClose')?.addEventListener('click', () => { openTopic = null; loadDetail(); });
@@ -1533,6 +1539,7 @@ function bindTopic(d, t, data) {
   $('#tpRelesson')?.addEventListener('click', () => {
     if (confirm('Пересоздать урок? Агент напишет его заново (≈ $0.3–0.5), перевод сбросится. Сданный тест останется в журнале.')) startStep(`topics/${enc(t.slug)}/lesson`);
   });
+  $('#tpVideo')?.addEventListener('click', () => startStep(`topics/${enc(t.slug)}/video`));
   $('#tpTest')?.addEventListener('click', () => { topicResult = null; topicAnswers = {}; startStep(`topics/${enc(t.slug)}/test`, { lang: topicLang }); });
   document.querySelectorAll('[data-tlang]').forEach((b) => b.addEventListener('click', async () => {
     topicLang = b.dataset.tlang;
@@ -3786,6 +3793,11 @@ function renderProfile(pr, answers, canRevert, cal) {
         <label for="pfTopicDays">Тема сдана на</label>
         <div class="row"><input id="pfTopicDays" type="number" min="7" max="365" step="1" style="width:90px" value="${pr.topic_valid_days ?? 90}">
           <span class="hint" style="margin:0">дней сданная тема подготовки к интервью засчитывается во всех вакансиях, потом — пересдать</span></div>
+        <label for="pfVidMin">Видео к уроку</label>
+        <div class="row"><span class="hint" style="margin:0">до</span>
+          <input id="pfVidMin" type="number" min="1" max="120" step="1" style="width:70px" value="${pr.video_rules?.max_minutes ?? 10}"><span class="hint" style="margin:0">мин, не старше</span>
+          <input id="pfVidYears" type="number" min="0.5" max="20" step="0.5" style="width:70px" value="${pr.video_rules?.max_years ?? 2}"><span class="hint" style="margin:0">лет, от</span>
+          <input id="pfVidViews" type="number" min="0" step="1000" style="width:100px" value="${pr.video_rules?.min_views ?? 5000}"><span class="hint" style="margin:0">просмотров, на английском</span></div>
         <label for="pfSal">Минимальная зарплата</label>
         <div class="row"><input id="pfSal" type="number" min="0" step="any" style="width:160px" value="${ms.amount ?? ''}" placeholder="не задана">
           <select id="pfCur" style="width:auto">${['EUR', 'PLN', 'USD', 'GBP'].map((c) => `<option ${ms.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
@@ -3865,7 +3877,8 @@ function bindProfile(answers) {
       relocation: form.querySelector('input[name="relocation"]:checked')?.value,
       onsite_locations: listOf($('#pfLoc').value), languages: listOf($('#pfLang').value),
       min_salary: { amount: $('#pfSal').value, currency: $('#pfCur').value, period: $('#pfPer').value },
-      no_reply_days: $('#pfNoReply').value, topic_valid_days: $('#pfTopicDays').value, exclude_us_only: $('#pfNoUS').checked,
+      no_reply_days: $('#pfNoReply').value, topic_valid_days: $('#pfTopicDays').value,
+      video_rules: { max_minutes: $('#pfVidMin').value, max_years: $('#pfVidYears').value, min_views: $('#pfVidViews').value }, exclude_us_only: $('#pfNoUS').checked,
     };
     $('#pfSave').disabled = true;
     $('#pfSave').textContent = 'Проверяю калибровку…';
