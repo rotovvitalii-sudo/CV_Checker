@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -1478,6 +1478,137 @@ async function addTargetFromFeed(company) {
 
 const STORY_THEMES = { 'hard-task': 'Сложная задача', conflict: 'Конфликт или несогласие', failure: 'Провал и что изменил',
   uncertainty: 'Решение в неопределённости', influence: 'Убедил людей без подчинения' };
+// ---------- W10 · мои вопросы к интервьюеру (docs/specs/38-interviewer-questions.md) ----------
+const HRQ_STAGES = [['recruiter', 'Рекрутер'], ['hiring_manager', 'Hiring manager'], ['final', 'Финал']];
+const HRQ_STATUS = [['todo', 'не задан'], ['asked', 'задан'], ['skipped', 'не успел'], ['moot', 'отпал']];
+const HRQ_CAT = { role: 'роль и ожидания', team: 'команда', success: 'как меряют успех', company: 'компания и рынок', process: 'процесс и шаги' };
+const HRQ_BASIS = { pain: 'что болит', news: 'новость', value: 'ценность', gap: 'пробел в CV', role: 'роль', process: 'процесс' };
+let hrqStage = null;   // выбранный этап; по умолчанию — текущий этап воронки
+let hrqEdit = null;    // id вопроса в режиме правки
+const hrqCurStage = (d) => hrqStage || (HRQ_STAGES.some(([k]) => k === d.stage) ? d.stage : 'recruiter');
+
+function hrqItemHtml(x, i, n) {
+  if (hrqEdit === x.id) {
+    return `<li class="hrq-item" data-hq="${esc(x.id)}"><form class="sub-form" data-hqform="${esc(x.id)}">
+      <label class="small" for="hq-q-${esc(x.id)}">Вопрос</label><textarea id="hq-q-${esc(x.id)}" name="q" rows="2">${esc(x.q)}</textarea>
+      <label class="small" for="hq-g-${esc(x.id)}">Цель — что узнать</label><textarea id="hq-g-${esc(x.id)}" name="goal" rows="2">${esc(x.goal)}</textarea>
+      <label class="small" for="hq-w-${esc(x.id)}">Аргументация — что показывает обо мне</label><textarea id="hq-w-${esc(x.id)}" name="why" rows="2">${esc(x.why)}</textarea>
+      <label class="small" for="hq-f-${esc(x.id)}">Уточнение, если ответ общий</label><input id="hq-f-${esc(x.id)}" name="followup" value="${esc(x.followup)}">
+      <p class="error" data-hqerr></p>
+      <div class="row"><button type="submit" class="primary small">Сохранить</button><button type="button" class="small" data-hqcancel>Отмена</button></div></form></li>`;
+  }
+  const b = x.basis || {};
+  return `<li class="hrq-item ${x.status !== 'todo' ? `is-${x.status}` : ''}" data-hq="${esc(x.id)}">
+    <div class="hrq-head"><strong class="hrq-q">${x.top ? '★ ' : ''}${esc(x.q)}</strong>
+      <label class="sr-only" for="hq-s-${esc(x.id)}">Статус</label>
+      <select id="hq-s-${esc(x.id)}" class="small" data-hqstatus="${esc(x.id)}">${HRQ_STATUS.map(([k, l]) => `<option value="${k}" ${x.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${x.goal ? `<p class="small hrq-line"><span class="muted">Цель:</span> ${esc(x.goal)}</p>` : ''}
+    ${x.why ? `<p class="small hrq-line"><span class="muted">Что показываю:</span> ${esc(x.why)}</p>` : ''}
+    <p class="small hrq-line muted">${esc(HRQ_CAT[x.category] || '')}${b.ref || b.url ? ` · опора — ${esc(HRQ_BASIS[b.type] || b.type)}${b.ref ? `: ${esc(b.ref)}` : ''}${b.url ? ` <a href="${esc(b.url)}" target="_blank" rel="noopener">источник</a>` : ''}` : ''}
+      ${x.manual ? ' · <span class="chip">мой вопрос</span>' : x.edited ? ' · <span class="chip">поправлен</span>' : ''}</p>
+    ${x.followup ? `<p class="small hrq-line">↳ ${esc(x.followup)}</p>` : ''}
+    ${x.flag ? `<p class="warn-text small hrq-line">${esc(x.flag)}</p>` : ''}
+    ${x.status === 'asked' ? `<div class="hrq-answer"><label class="small" for="hq-a-${esc(x.id)}">Что ответил HR</label>
+      <div class="dict"><textarea id="hq-a-${esc(x.id)}" rows="2" data-hqanswer="${esc(x.id)}" placeholder="Нажми 🎤 и перескажи ответ">${esc(x.answer)}</textarea>
+        <button class="mic" id="hq-m-${esc(x.id)}" type="button" title="Надиктовать ответ" aria-label="Надиктовать ответ HR">🎤</button></div>
+      <div class="hint" id="hq-h-${esc(x.id)}"></div></div>` : ''}
+    <div class="sub-meta">
+      <button type="button" class="link-btn inline" data-hqedit="${esc(x.id)}">править</button>
+      ${x.manual ? '' : `<button type="button" class="link-btn inline" data-hqagain="${esc(x.id)}">другой вариант</button>`}
+      <button type="button" class="link-btn inline" data-hqtop="${esc(x.id)}">${x.top ? 'убрать из главных' : 'в главные'}</button>
+      ${i > 0 ? `<button type="button" class="link-btn inline" data-hqmove="${esc(x.id)}" data-dir="-1" aria-label="Выше">↑</button>` : ''}
+      ${i < n - 1 ? `<button type="button" class="link-btn inline" data-hqmove="${esc(x.id)}" data-dir="1" aria-label="Ниже">↓</button>` : ''}
+      <button type="button" class="link-btn inline danger" data-hqdel="${esc(x.id)}">удалить</button></div></li>`;
+}
+
+// W6: в разборе собеседования — что я спросил на этом этапе и что ответили (W10)
+function hrqAskedHtml(d, stage) {
+  const asked = (d.hrq?.stages?.[stage]?.items || []).filter((x) => x.status === 'asked');
+  if (!asked.length) return '';
+  return `<div class="hrq-asked small"><p style="margin:0 0 4px"><strong>Мои вопросы и ответы</strong></p><ul class="tight">${asked.map((x) => `<li>${esc(x.q)}<br><span class="muted">→ ${x.answer ? esc(x.answer) : 'ответ не записан'}</span></li>`).join('')}</ul></div>`;
+}
+
+function hrqSection(d, P) {
+  const stage = hrqCurStage(d);
+  const S = d.hrq?.stages?.[stage];
+  const items = S?.items || [];
+  const j = d.jobs.hrq;
+  const busy = jobBusy(j);
+  const top = items.filter((x) => x.top);
+  const count = (k) => (d.hrq?.stages?.[k]?.items || []).length;
+  const asked = items.filter((x) => x.status === 'asked').length;
+  return `<section class="iv-sec" id="hrqSec"><h3 class="st-h">Мои вопросы к интервьюеру</h3>
+    <div class="row hrq-tabs" role="tablist">${HRQ_STAGES.map(([k, l]) => `<button type="button" role="tab" aria-selected="${k === stage}" class="small ${k === stage ? 'primary' : ''}" data-hqstage="${k}">${l}${count(k) ? ` · ${count(k)}` : ''}</button>`).join('')}</div>
+    ${busy ? '<p class="running small"><span class="spin"></span>Opus готовит вопросы…</p>' : j?.state === 'error' ? `<p class="error small">${esc(j.error)}</p>` : ''}
+    ${!items.length && P?.ask?.length ? `<p class="muted small" style="margin:6px 0 2px">Из подготовки (без цели и аргументации):</p><ul class="tight small">${P.ask.map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}
+    ${!d.companyResearch && !busy ? '<p class="muted small">Разбора компании нет — вопросы будут только по вакансии. <strong>Разобрать компанию</strong> (блок письма) — станут конкретнее.</p>' : ''}
+    ${top.length ? `<div class="hrq-top"><p class="small" style="margin:0 0 4px"><strong>Если останется 2 минуты:</strong></p><ol class="tight small">${top.map((x) => `<li>${esc(x.q)}</li>`).join('')}</ol></div>` : ''}
+    ${S?.check && !S.check.pass ? `<p class="warn-text small">Проверка: ${esc(S.check.issues.slice(0, 3).join('; '))}</p>` : ''}
+    ${items.length ? `<ol class="hrq-list">${items.map((x, i) => hrqItemHtml(x, i, items.length)).join('')}</ol>
+      <p class="muted small" style="margin:4px 0 0">Задано ${asked} из ${items.length}${S?.lang && S.lang !== 'en' ? ` · язык вакансии: ${esc(S.lang)}` : ''}${S?.model ? ` · ${esc(S.model)}` : ''}</p>` : ''}
+    <details class="more" ${items.length ? '' : 'open'}><summary>+ Свой вопрос</summary>
+      <form class="sub-form" id="hrqAdd" style="margin-top:6px">
+        <label class="sr-only" for="hrqAddQ">Вопрос</label><textarea id="hrqAddQ" name="q" rows="2" placeholder="Вопрос — как скажешь вслух"></textarea>
+        <label class="sr-only" for="hrqAddG">Цель</label><input id="hrqAddG" name="goal" placeholder="Цель: что хочешь узнать (необязательно)">
+        <label class="sr-only" for="hrqAddW">Аргументация</label><input id="hrqAddW" name="why" placeholder="Что этот вопрос показывает о тебе (необязательно)">
+        <p class="error" id="hrqAddErr"></p>
+        <div class="row"><button type="submit" class="small">Добавить</button></div></form></details>
+    <div class="row" style="margin-top:8px">${busy ? '' : `<button type="button" class="${items.length ? 'small' : 'primary small'}" id="hrqGen">${items.length ? 'Перегенерировать список' : 'Сгенерировать вопросы'}</button>`}
+      <span class="hint" style="margin:0">Opus, один ход. ${items.length ? 'Правленые, твои и заданные вопросы останутся.' : 'Цель и аргументация у каждого вопроса.'}</span></div>
+  </section>`;
+}
+
+function bindHrq(d) {
+  const sec = $('#hrqSec');
+  if (!sec) return;
+  const stage = hrqCurStage(d);
+  const base = `/api/vacancies/${enc(d.name)}/hrq/${stage}`;
+  const patch = async (id, body) => {
+    try { return await api(`${base}/${enc(id)}`, { method: 'PATCH', body }); } catch (e) { alert(e.message); return null; }
+  };
+  sec.querySelectorAll('[data-hqstage]').forEach((b) => b.addEventListener('click', () => { hrqStage = b.dataset.hqstage; hrqEdit = null; loadDetail(); }));
+  $('#hrqGen')?.addEventListener('click', () => {
+    if ((d.hrq?.stages?.[stage]?.items || []).length && !confirm('Перегенерировать? Нетронутые вопросы заменятся; правленые, твои и заданные останутся.')) return;
+    startStep('hrq', { stage });
+  });
+  sec.querySelectorAll('[data-hqagain]').forEach((b) => b.addEventListener('click', () => startStep('hrq', { stage, id: b.dataset.hqagain })));
+  sec.querySelectorAll('[data-hqedit]').forEach((b) => b.addEventListener('click', () => { hrqEdit = b.dataset.hqedit; loadDetail(); }));
+  sec.querySelectorAll('[data-hqcancel]').forEach((b) => b.addEventListener('click', () => { hrqEdit = null; loadDetail(); }));
+  sec.querySelectorAll('[data-hqform]').forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(['q', 'goal', 'why', 'followup'].map((k) => [k, f.elements[k].value]));
+    try { await api(`${base}/${enc(f.dataset.hqform)}`, { method: 'PATCH', body }); } catch (err) { f.querySelector('[data-hqerr]').textContent = err.message; return; }
+    hrqEdit = null; loadDetail();
+  }));
+  sec.querySelectorAll('[data-hqstatus]').forEach((s) => s.addEventListener('change', async () => { if (await patch(s.dataset.hqstatus, { status: s.value })) loadDetail(); }));
+  sec.querySelectorAll('[data-hqtop]').forEach((b) => b.addEventListener('click', async () => {
+    const it = d.hrq.stages[stage].items.find((x) => x.id === b.dataset.hqtop);
+    if (await patch(it.id, { top: !it.top })) loadDetail();
+  }));
+  sec.querySelectorAll('[data-hqmove]').forEach((b) => b.addEventListener('click', async () => { if (await patch(b.dataset.hqmove, { move: Number(b.dataset.dir) })) loadDetail(); }));
+  sec.querySelectorAll('[data-hqdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Удалить вопрос?')) return;
+    try { await api(`${base}/${enc(b.dataset.hqdel)}`, { method: 'DELETE' }); } catch (e) { alert(e.message); return; }
+    loadDetail();
+  }));
+  // Ответ HR сохраняется, когда уходишь из поля; микрофон — как в тренажёре
+  sec.querySelectorAll('[data-hqanswer]').forEach((ta) => {
+    const id = ta.dataset.hqanswer;
+    let last = ta.value;
+    const save = async () => { if (ta.value !== last) { last = ta.value; await patch(id, { answer: ta.value }); } };
+    ta.addEventListener('blur', save);
+    setupMic(ta, () => {}, { btn: $(`#hq-m-${id}`), hint: $(`#hq-h-${id}`), link: `${location.origin}/#/v/${enc(d.name)}` });
+  });
+  $('#hrqAdd')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try { await api(base, { method: 'POST', body: { q: f.elements.q.value, goal: f.elements.goal.value, why: f.elements.why.value } }); }
+    catch (err) { $('#hrqAddErr').textContent = err.message; return; }
+    loadDetail();
+  });
+  if (d.jobs.hrq) attachFeed(d.jobs.hrq);
+}
+
 let practiceQ = null;   // вопрос, на который сейчас отвечаешь
 let practiceParent = null;
 let aboutTimer = null;
@@ -1519,7 +1650,8 @@ function interviewBlock(d) {
       <span class="right">${P && !busy ? '<button type="button" class="small" id="ivPrep">Подготовить заново</button>' : ''}</span></h2>
     ${busy || job?.state === 'error' ? jobBlock(job) : ''}
     ${!P && !busy ? `<div class="row"><button type="button" class="primary" id="ivPrep">Подготовиться</button>
-      <span class="hint" style="margin:0">«О себе» под роль, 5 историй STAR из твоих карточек, рискованные вопросы и вопросы к компании. Агент, ≈ $0.5–1.</span></div>` : ''}
+      <span class="hint" style="margin:0">«О себе» под роль, 5 историй STAR из твоих карточек, рискованные вопросы и вопросы к компании. Агент, ≈ $0.5–1.</span></div>
+      ${hrqSection(d, null)}` : ''}
     ${P ? `
     <section class="iv-sec"><h3 class="st-h">Расскажите о себе <span class="muted small">· ~${Math.round(words / 2.5)} с вслух (цель 45–90)</span></h3>
       <ol class="tight"><li><strong>Кто я сейчас:</strong> ${esc(P.about.now)}</li><li><strong>Моё сильнейшее:</strong> ${esc(P.about.strongest)}</li><li><strong>Почему эта роль:</strong> ${esc(P.about.why)}</li></ol>
@@ -1533,7 +1665,7 @@ function interviewBlock(d) {
       ${(P.missing_themes || []).length ? `<p class="warn-text small">Нет карточки для: ${P.missing_themes.map(esc).join(', ')} — <a href="#/cases/new">надиктуй кейс</a>.</p>` : ''}</section>
     <section class="iv-sec"><h3 class="st-h">Рискованные вопросы</h3>
       <ul class="tight">${P.risky.map((r) => `<li><strong>${esc(r.q)}</strong><div class="muted small">${esc(r.why)}${r.hint ? ` · опора: ${esc(r.hint)}` : ''}</div></li>`).join('')}</ul></section>
-    <section class="iv-sec"><h3 class="st-h">Вопросы к компании</h3><ul class="tight">${(P.ask || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ul></section>
+    ${hrqSection(d, P)}
     ${companyBlock(d, 'interview')}
     ${(P.culture_used || []).length ? `<p class="muted small" style="margin:-4px 0 10px">С акцентом на ценности компании: ${P.culture_used.map(esc).join(', ')}</p>` : ''}
     ${(P.insights_used || []).length ? `<p class="muted small" style="margin:-4px 0 10px">Опора на твои инсайты: ${P.insights_used.map((id) => `<a href="#/cases/insights">${esc(id.replace(/^\d{4}-\d{2}-\d{2}-/, ''))}</a>`).join(', ')}</p>` : ''}
@@ -1718,6 +1850,7 @@ function bindTopic(d, t, data) {
 
 function bindInterview(d) {
   pollFacts(); // C13
+  bindHrq(d); // W10
   $('#tpGen')?.addEventListener('click', () => {
     if (d.topics && !confirm('Пересобрать список тем? Сданные темы останутся сданными (библиотека общая).')) return;
     openTopic = null;
@@ -1804,10 +1937,12 @@ function processBlock(d) {
     ${(d.debriefs || []).length ? `<div class="debriefs"><h3 class="st-h">Разборы после собеседований · ${d.debriefs.length}</h3>
       ${d.debriefs.slice().reverse().map((b) => `<details class="debrief"><summary>${fmtDay(b.at)} · ${esc(STAGE_LABEL[b.stage] || b.stage)}${b.practice ? ` — тренировать: ${esc(b.practice.slice(0, 60))}` : ''}</summary>
         <dl class="kv">${DEBRIEF_FIELDS.filter(([k]) => b[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(b[k])}</dd>`).join('')}</dl>
+        ${hrqAskedHtml(d, b.stage)}
         <button type="button" class="link-btn inline danger" data-debdel="${esc(b.id)}">Удалить</button></details>`).join('')}</div>` : ''}
     ${cur >= 1 || (d.debriefs || []).length ? `<details class="debrief-new" ${sessionStorage.getItem(`cvc-deb-${d.name}`) ? 'open' : ''}><summary><strong>+ Разбор после собеседования</strong> <span class="muted small">5 минут, пока помнишь вопросы</span></summary>
       <form id="debForm" class="form-grid" style="margin-top:10px">
         <label for="debStage">Этап</label><select id="debStage">${FUNNEL_STAGES.slice(1, 4).map(([k, l]) => `<option value="${k}" ${k === d.stage ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${hrqAskedHtml(d, d.stage) ? `<span></span><div>${hrqAskedHtml(d, d.stage)}</div>` : ''}
         ${DEBRIEF_FIELDS.map(([k, l]) => `<label for="deb-${k}">${l}</label><textarea id="deb-${k}" data-deb="${k}" rows="2"></textarea>`).join('')}
         <span></span><div class="row"><button type="submit" class="primary small">Сохранить разбор</button><span class="error" id="debErr"></span></div>
       </form></details>` : ''}
@@ -2106,7 +2241,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';

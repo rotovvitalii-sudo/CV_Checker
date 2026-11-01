@@ -428,6 +428,54 @@ ${String(text).slice(0, 8000)}
 "looks_like_case": false, "case_hint": "", "multiple": false, "parts": []}`;
 }
 
+// ---------- W10 · мои вопросы к интервьюеру (docs/specs/38-interviewer-questions.md) ----------
+const HRQ_SYSTEM = 'Ты опытный карьерный коуч продуктовых лидеров. Готовишь кандидату вопросы, которые он задаст интервьюеру в конце звонка. Ничего не выдумываешь о компании сверх данных. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+const HRQ_STAGE = { recruiter: 'первый звонок с рекрутером / HR', hiring_manager: 'интервью с нанимающим менеджером', final: 'финальный этап (руководство, команда)' };
+
+function interviewerQuestions({ stage, langName, vacancy, fit, research, whyUs, cv, risky, earlier, keep, count, replace, prev, error }) {
+  const r = research;
+  const b = fit?.buckets || {};
+  const comp = r ? `Компания ${r.company}: ${r.snapshot.what} ${r.snapshot.product ? `Продукт: ${r.snapshot.product}.` : ''} ${r.snapshot.stage ? `Стадия: ${r.snapshot.stage}.` : ''}
+Ценности (их слова): ${r.values.slice(0, 5).map((v) => `${v.name} (${v.their_words.join(', ')}) — ${v.meaning}`).join('; ')}
+Новости (только эти ссылки можно ставить в basis.url):
+${r.snapshot.news.filter((n) => n.url).map((n) => `- ${n.date || ''} ${n.title} — ${n.url}`).join('\n') || '—'}
+Страницы разбора (тоже можно в basis.url): ${r.sources.map((x) => x.url).slice(0, 10).join(' ')}
+Вопросы о культуре, на которые в источниках нет ответа: ${(r.ask || []).join(' | ') || '—'}
+Чего не говорить: ${(r.avoid || []).map((a) => a.what).join('; ') || '—'}` : 'Разбора компании нет — опирайся на вакансию; basis.url оставляй пустым.';
+  return `Этап: ${HRQ_STAGE[stage] || stage}. Вопросы — на ${langName} языке (язык вакансии); "goal" и "why" — по-русски.
+
+Текст вакансии:
+"""
+${String(vacancy).slice(0, 9000)}
+"""
+${fit?.pain ? `Что болит у компании: ${fit.pain}\n` : ''}${fit?.situation ? `Ситуация: ${fit.situation}\n` : ''}${fit?.current_task ? `Главная задача роли: ${fit.current_task}\n` : ''}${(b.minimum || []).length ? `Минимум требований: ${b.minimum.map((x) => x.req).join('; ')}\n` : ''}
+${comp}
+${whyUs ? `\nПочему кандидату интересна компания (его ответ «почему мы»): ${whyUs}\n` : ''}
+CV кандидата:
+"""
+${String(cv).slice(0, 6000)}
+"""
+${(risky || []).length ? `Где CV и вакансия расходятся (рискованные вопросы к нему): ${risky.join(' | ')}\n` : ''}${earlier.length ? `\nУже спрошено на прошлых этапах и что ответили (не повторяй; используй ответы, копай глубже):\n${earlier.map((x) => `- [${x.stage}] ${x.q} → ${x.answer || 'ответ не записан'}`).join('\n')}\n` : ''}
+Каким должен быть вопрос:
+- конкретный для этой компании и роли: опирается на «что болит», свежую новость, ценность, требование вакансии или пробел в CV кандидата;
+- показывает, что кандидат понимает бизнес и уже думает о задаче; звучит естественно вслух, ≤ 30 слов;
+- НЕ спрашивай то, на что уже есть ответ в тексте вакансии или в разборе компании;
+- без зарплаты, бонусов, отпуска, удалёнки; без «what is your culture like», «typical day»;
+- под этап: рекрутеру — роль и ожидания, почему роль открыта, команда, процесс и сроки; менеджеру — задача первых 90 дней, как меряют успех,
+  главные трудности, решения и данные; финал — стратегия, приоритеты, как устроены решения;
+- минимум один вопрос — о следующих шагах процесса (category "process"); минимум один — из «что болит» или новости (basis "pain" / "news").
+Поля: "q" — вопрос; "goal" — что кандидат хочет узнать; "why" — аргументация: что этот вопрос показывает о кандидате и почему важен именно сейчас
+(1–2 фразы, конкретно, обращаясь к нему на «ты»: «Показывает, что ты …»); "basis" — {"type": "pain|news|value|gap|role|process", "ref": "фраза-источник", "url": "ссылка из списка выше или пусто"};
+"category" — "role|team|success|company|process"; "top" — true у 3 главных (если на вопросы останется 2 минуты); "followup" — уточнение, если ответ общий.
+${replace ? `\nЗамени ОДИН вопрос — дай другой вопрос с другой целью, не похожий на этот: «${replace.q}» (цель: ${replace.goal}).
+Остальные вопросы списка (не дублируй): ${keep.map((x) => x.q).join(' | ') || '—'}${error ? `\nПрошлая замена не прошла проверку: ${error}. Исправь. Прошлая замена: «${prev}»` : ''}
+Верни JSON: {"item": {"q": "…", "goal": "…", "why": "…", "basis": {"type": "…", "ref": "…", "url": ""}, "category": "…", "top": ${replace.top}, "followup": "…"}}`
+    : `${keep.length ? `\nЭти вопросы кандидат оставляет (не дублируй по смыслу): ${keep.map((x) => `${x.q}${x.top ? ' [главный]' : ''}`).join(' | ')}
+Главных среди них: ${keep.filter((x) => x.top).length}; отметь "top" только у ${Math.max(0, 3 - keep.filter((x) => x.top).length)} новых.\n` : ''}
+Сгенерируй ${count} вопросов.${error ? `\nПрошлый список не прошёл проверку: ${error}. Исправь.\nПрошлый список: ${prev}` : ''}
+Верни JSON: {"items": [{"q": "…", "goal": "…", "why": "…", "basis": {"type": "…", "ref": "…", "url": ""}, "category": "…", "top": false, "followup": "…"}]}`}`;
+}
+
 // ---------- C13 · ответы → база кейсов (docs/specs/37-answers-to-cases.md) ----------
 const ANSWER_FACTS_SYSTEM = 'Ты сверяешь ответ кандидата с его базой кейсов и выписываешь только то, что он сам сказал и чего в базе нет. Ничего не додумываешь. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
@@ -620,5 +668,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
 Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
 }
 
-module.exports = { answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

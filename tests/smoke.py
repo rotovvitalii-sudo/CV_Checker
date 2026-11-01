@@ -146,6 +146,11 @@ def api(base):
             recs = [x.get("facts") for x in (d.get("submittedAnswers") or [])] + [r.get("facts") for r in ((d.get("interview") or {}).get("practice") or [])] + [d.get("whyUsFacts")]
             for f in [r for r in recs if r]:
                 ok(bool(f.get("key")) and f.get("state") in ("running", "done", "error") and "answer" not in f, f"факты из ответа {it['name']}: плохая запись")
+            # W10: мои вопросы к интервьюеру — у каждого id, текст и известный статус, главных не больше 3
+            for st, S in ((d.get("hrq") or {}).get("stages") or {}).items():
+                its = S.get("items") or []
+                ok(all(x.get("id") and x.get("q") and x.get("status") in ("todo", "asked", "skipped", "moot") for x in its), f"вопросы интервьюеру {it['name']} / {st}: плохая запись")
+                ok(sum(1 for x in its if x.get("top")) <= 3, f"вопросы интервьюеру {it['name']} / {st}: главных больше 3")
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")

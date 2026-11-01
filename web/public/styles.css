@@ -622,6 +622,19 @@ table.grid td.num { white-space: nowrap; }
 .sug-list { display: flex; flex-direction: column; gap: 12px; }
 .sug { gap: 8px; }
 .sug-fact { margin: 0; }
+/* W10: мои вопросы к интервьюеру */
+.hrq-tabs { gap: 6px; margin: 4px 0 8px; }
+.hrq-top { border-left: 3px solid var(--accent, var(--line)); padding: 4px 10px; margin: 6px 0 10px; }
+.hrq-list { padding-left: 20px; margin: 8px 0 0; }
+.hrq-item { margin: 0 0 12px; }
+.hrq-item.is-skipped .hrq-q, .hrq-item.is-moot .hrq-q { color: var(--muted); }
+.hrq-head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-start; justify-content: space-between; }
+.hrq-q { flex: 1 1 240px; }
+.hrq-head select { flex: none; width: auto; }
+.hrq-line { margin: 3px 0 0; }
+.hrq-answer { margin-top: 6px; }
+.hrq-asked { margin-top: 6px; }
+
 /* C13: что нашлось в ответе для базы кейсов */
 .af-line { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 8px; }
 .af-line .spin { width: 10px; height: 10px; }

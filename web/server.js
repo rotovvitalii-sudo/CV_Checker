@@ -26,6 +26,7 @@ const targets = require('./targets');
 const money = require('./money');
 const answerLib = require('./answer-lib');
 const answerFacts = require('./answer-facts');
+const hrq = require('./hrq');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -111,6 +112,7 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.whyUs = company.readWhy(store.outDir(name));
   info.whyUsDictation = store.app(name).whyUsDictation || '';
   info.whyUsFacts = answerFactsFor(name, WHY_DICT_Q, info.whyUsDictation);
+  info.hrq = hrq.read(store.outDir(name)); // W10
   info.submittedAnswers = (info.submittedAnswers || []).map((x) => ({ ...x, facts: answerFactsFor(name, x.q, x.a) }));
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
@@ -1317,6 +1319,141 @@ app.delete('/api/vacancies/:name/debrief/:id', wrap(async (req, res) => {
   const a = store.app(store.safeName(req.params.name));
   a.debriefs = (a.debriefs || []).filter((x) => x.id !== req.params.id);
   store.save();
+  res.json({ ok: true });
+}));
+
+// ---------- W10 · мои вопросы к интервьюеру (docs/specs/38-interviewer-questions.md) ----------
+// Один ход Opus: весь список этапа (перегенерация сохраняет правленые, ручные и заданные) или один вопрос («Другой вариант»)
+function hrqContext(name, stage) {
+  const info = store.vacancyInfo(name);
+  const dir = store.outDir(name);
+  const vacancy = readText(path.join(ROOT, 'vacancies', `${name}.md`));
+  const research = company.view(dir, company.slugify(info.company))?.research || null;
+  const data = hrq.read(dir);
+  const order = hrq.STAGES.indexOf(stage);
+  const earlier = hrq.STAGES.slice(0, Math.max(0, order)).flatMap((st) => (data.stages[st]?.items || [])
+    .filter((x) => x.status === 'asked').map((x) => ({ stage: st, q: x.q, answer: x.answer })));
+  const code = hrq.lang(vacancy);
+  return { info, dir, vacancy, research, data, earlier, code,
+    base: { stage, langName: hrq.LANGS[code] || 'английском', vacancy, fit: store.app(name).fit, research, whyUs: company.readWhy(dir)?.short || '',
+      cv: applyMsgCv(name).text, risky: (readInterview(name).prep?.risky || []).map((r) => r.q), earlier } };
+}
+async function hrqCheck(items, research, code, full) {
+  const c = hrq.check(items, research, code, { full });
+  if (code === 'en' && items.length) {
+    const h = await humanizeScore(items.map((x) => x.q).join('\n\n'));
+    if (h && !h.pass) { c.issues.push(`humanizer ${h.score} > 3: ${h.hits.slice(0, 2).join('; ')}`); c.pass = false; }
+  }
+  return c;
+}
+function runHrq(name, stage, { replaceId = null, prev = '', error = '', retry = false } = {}) {
+  const ctx = hrqContext(name, stage);
+  const old = ctx.data.stages[stage]?.items || [];
+  const target = replaceId ? old.find((x) => x.id === replaceId) : null;
+  if (replaceId && !target) throw new Error('нет такого вопроса');
+  const keep = replaceId ? old.filter((x) => x.id !== replaceId) : old.filter(hrq.kept);
+  const count = keep.length ? Math.min(8, Math.max(2, 7 - keep.length)) : 7;
+  const job = runJob({ kind: 'hrq', target: name, system: prompts.HRQ_SYSTEM,
+    prompt: prompts.interviewerQuestions({ ...ctx.base, keep, count, replace: target, prev, error }),
+    logFile: path.join(ctx.dir, '10-interviewer-questions.log'),
+    onDone: async (j) => {
+      const r = oneJSON(j.finalText);
+      const data = hrq.read(ctx.dir); // свежая копия: пока шла генерация, кандидат мог отметить или поправить вопрос
+      const cur = data.stages[stage] || { items: [] };
+      if (replaceId) {
+        const i = cur.items.findIndex((x) => x.id === replaceId);
+        if (i < 0) return; // вопрос удалили, пока шла генерация
+        const item = hrq.normItem(r.item || {}, { top: cur.items[i].top });
+        if (!item.q) throw new Error('модель не вернула вопрос');
+        const c = await hrqCheck([item], ctx.research, ctx.code, false);
+        if (!c.pass && !retry) { runHrq(name, stage, { replaceId, prev: item.q, error: c.issues.join('; '), retry: true }); return; }
+        cur.items[i] = { ...item, flag: c.pass ? '' : c.issues.join('; ') };
+      } else {
+        const fresh = (Array.isArray(r.items) ? r.items : []).map((x) => hrq.normItem(x)).filter((x) => x.q);
+        if (!fresh.length) throw new Error('модель не вернула вопросов');
+        const items = hrq.merge(cur.items.filter(hrq.kept), fresh);
+        // Список целиком проверяется, только если оставленных нет; иначе — только новые вопросы (ручные правит кандидат, не модель)
+        const full = !cur.items.some(hrq.kept);
+        const c = await hrqCheck(full ? items : items.filter((x) => fresh.some((f) => f.id === x.id)), ctx.research, ctx.code, full);
+        if (!c.pass && !retry) { runHrq(name, stage, { prev: fresh.map((x) => x.q).join(' | '), error: c.issues.join('; '), retry: true }); return; }
+        Object.assign(cur, { items, check: c });
+      }
+      Object.assign(cur, { at: new Date().toISOString(), model: j.model, lang: ctx.code, research: !!ctx.research });
+      data.stages[stage] = cur;
+      hrq.save(ctx.dir, data);
+    } });
+  attach(name, 'hrq', job);
+  return job;
+}
+
+const hrqStage = (s) => (hrq.STAGES.includes(s) ? s : null);
+app.post('/api/vacancies/:name/hrq', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const stage = hrqStage(req.body?.stage);
+  if (!stage) return res.status(400).json({ error: 'неизвестный этап' });
+  if (lacksText(name)) return res.status(400).json({ error: NO_TEXT });
+  if (busy(store.app(name), 'hrq')) return res.status(409).json({ error: 'вопросы уже собираются' });
+  try { res.json({ jobId: runHrq(name, stage, { replaceId: req.body?.id || null }).id }); } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
+// Без агента: ручной вопрос, правка, статус и ответ HR, порядок, удаление
+function hrqItem(name, stage, id) {
+  const dir = store.outDir(name);
+  const data = hrq.read(dir);
+  const items = data.stages[stage]?.items || [];
+  return { dir, data, items, i: items.findIndex((x) => x.id === id) };
+}
+app.post('/api/vacancies/:name/hrq/:stage', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const stage = hrqStage(req.params.stage);
+  if (!stage) return res.status(400).json({ error: 'неизвестный этап' });
+  const b = req.body || {};
+  if (!String(b.q || '').trim()) return res.status(400).json({ error: 'впиши вопрос' });
+  const dir = store.outDir(name);
+  const data = hrq.read(dir);
+  const cur = data.stages[stage] || (data.stages[stage] = { items: [] });
+  const item = hrq.normItem({ q: b.q, goal: b.goal, why: b.why, followup: b.followup, category: b.category }, { manual: true });
+  item.basis = { type: 'role', ref: '', url: '' };
+  cur.items.push(item);
+  hrq.save(dir, data);
+  res.json(item);
+}));
+app.patch('/api/vacancies/:name/hrq/:stage/:id', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const stage = hrqStage(req.params.stage);
+  if (!stage) return res.status(400).json({ error: 'неизвестный этап' });
+  const { dir, data, items, i } = hrqItem(name, stage, req.params.id);
+  if (i < 0) return res.status(404).json({ error: 'нет такого вопроса' });
+  const b = req.body || {};
+  const it = items[i];
+  const text = ['q', 'goal', 'why', 'followup'].filter((k) => typeof b[k] === 'string' && b[k].trim() !== it[k]);
+  if (text.includes('q') && !b.q.trim()) return res.status(400).json({ error: 'вопрос не может быть пустым' });
+  for (const k of text) it[k] = b[k].trim().slice(0, k === 'why' ? 600 : 400);
+  if (text.length) { it.edited = true; it.flag = ''; }
+  if (b.status !== undefined) {
+    if (!hrq.STATUSES.includes(b.status)) return res.status(400).json({ error: 'неизвестный статус' });
+    it.status = b.status;
+  }
+  if (typeof b.answer === 'string') { it.answer = b.answer.trim().slice(0, 4000); it.answeredAt = it.answer ? new Date().toISOString() : null; }
+  if (typeof b.top === 'boolean') {
+    if (b.top && !it.top && items.filter((x) => x.top).length >= 3) return res.status(400).json({ error: 'главных уже 3 — сначала сними отметку с другого' });
+    it.top = b.top;
+  }
+  if (b.move === -1 || b.move === 1) {
+    const j = i + b.move;
+    if (j >= 0 && j < items.length) [items[i], items[j]] = [items[j], items[i]];
+  }
+  hrq.save(dir, data);
+  res.json(it);
+}));
+app.delete('/api/vacancies/:name/hrq/:stage/:id', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const stage = hrqStage(req.params.stage);
+  if (!stage) return res.status(400).json({ error: 'неизвестный этап' });
+  const { dir, data, items, i } = hrqItem(name, stage, req.params.id);
+  if (i < 0) return res.status(404).json({ error: 'нет такого вопроса' });
+  items.splice(i, 1);
+  hrq.save(dir, data);
   res.json({ ok: true });
 }));
 
