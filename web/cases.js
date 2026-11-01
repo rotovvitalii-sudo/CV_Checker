@@ -159,18 +159,22 @@ const factKey = (s) => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]+/g,
 // Новые предложения без дублей (по тексту факта и источнику); card — существующая карточка или null
 function addSuggestions(items, origin) {
   const list = suggestions();
-  const seen = new Set(list.map((s) => `${factKey(s.fact)}|${s.source}`));
+  // Дубль — тот же факт из того же источника или (C13: повторные ответы на один вопрос) из той же вакансии
+  const seen = new Set(list.flatMap((s) => [`${factKey(s.fact)}|${s.source}`, s.vacancy ? `${factKey(s.fact)}|v:${s.vacancy}` : '']));
   let added = 0;
   for (const it of items || []) {
     const fact = String(it.fact || '').trim().slice(0, 300);
     if (!fact) continue;
     const source = path.basename(String(it.source || ''));
     const key = `${factKey(fact)}|${source}`;
-    if (seen.has(key)) continue;
+    const vkey = it.vacancy ? `${factKey(fact)}|v:${it.vacancy}` : '';
+    if (seen.has(key) || (vkey && seen.has(vkey))) continue;
     seen.add(key);
+    if (vkey) seen.add(vkey);
     const cardId = it.card && exists(String(it.card).replace(/\.md$/, '').split('/').pop()) ? String(it.card).replace(/\.md$/, '').split('/').pop() : null;
     list.push({ id: crypto.randomUUID().slice(0, 8), fact, quote: String(it.quote || '').trim().slice(0, 400), card: cardId,
-      source, origin, vacancy: it.vacancy || '', state: 'new', at: new Date().toISOString() });
+      source, origin, vacancy: it.vacancy || '', question: String(it.question || '').slice(0, 300),
+      conflict: cardId && it.conflict ? String(it.conflict).slice(0, 200) : null, state: 'new', at: new Date().toISOString() });
     added += 1;
   }
   if (added) saveSuggestions(list);
@@ -186,13 +190,13 @@ function acceptSuggestion(id, cardId) {
   if (!target || !exists(target)) throw new Error('выбери карточку');
   const p = cardPath(target);
   let md = fs.readFileSync(p, 'utf8');
-  const line = `- ${s.fact}${s.source ? ` — источник: raw/${s.source}` : ''} (добавлено ${today()})`;
+  const line = `- ${s.fact}${s.conflict && target === s.card ? ` [расходится с карточкой: ${s.conflict} — проверь]` : ''}${s.source ? ` — источник: raw/${s.source}` : ''} (добавлено ${today()})`;
   if (md.includes(ADDITIONS)) {
     const [head, tail] = md.split(ADDITIONS);
     const next = tail.search(/\n## /);
     md = next === -1 ? `${md.trimEnd()}\n${line}\n` : `${head}${ADDITIONS}${tail.slice(0, next).trimEnd()}\n${line}\n${tail.slice(next)}`;
   } else {
-    const block = `${ADDITIONS}\nФакты из надиктовок писем, подтверждённые кандидатом в приложении (C9).\n\n${line}\n\n`;
+    const block = `${ADDITIONS}\nФакты из надиктовок писем и ответов, подтверждённые кандидатом в приложении (C9, C13).\n\n${line}\n\n`;
     const gaps = md.search(/^## Пробелы/m);
     md = gaps === -1 ? `${md.trimEnd()}\n\n${block}` : `${md.slice(0, gaps)}${block}${md.slice(gaps)}`;
   }

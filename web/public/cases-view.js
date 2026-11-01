@@ -124,18 +124,24 @@ function cardOptions(d, selected) {
   return `<option value="">— выбери карточку</option>${d.cards.map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.company)} · ${esc(c.id)}</option>`).join('')}`;
 }
 
+// C13: откуда предложение, если не из надиктовки письма
+const SUG_ORIGIN = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы' };
+
 function casesSuggestionsHtml(d) {
   if (!d.suggestions.length) {
     return `<div class="table-box empty-box">Новых предложений нет${d.suggestionsDone ? ` — разобрано ${d.suggestionsDone}` : ''}.
-      Они появляются после писем из надиктовки или по кнопке «Найти новые факты» во вкладке «Надиктовки писем».</div>`;
+      Они появляются после писем из надиктовки, после развёрнутых ответов в тренажёре и в формах заявки
+      или по кнопке «Найти новые факты» во вкладке «Надиктовки писем».</div>`;
   }
-  return `<p class="muted small" style="margin:0">Факты, которые ты назвал в надиктовках, но которых нет в карточках. Пока не добавишь — агенты их не используют.
+  return `<p class="muted small" style="margin:0">Факты, которые ты назвал в надиктовках и ответах, но которых нет в карточках. Пока не добавишь — агенты их не используют.
       «Добавить» дописывает факт в раздел карточки «Дополнения из надиктовок» со ссылкой на надиктовку.</p>
     <div class="sug-list">${d.suggestions.map((s) => `<article class="ncard sug" data-sug="${esc(s.id)}">
+      ${SUG_ORIGIN[s.origin] ? `<p class="small sug-src"><span class="chip info">${SUG_ORIGIN[s.origin]}</span>${s.question ? ` <span class="muted">${esc(s.question)}</span>` : ''}</p>` : ''}
       <p class="sug-fact"><strong>${esc(s.fact)}</strong></p>
+      ${s.conflict ? `<p class="warn-text small sug-conflict">Расходится с карточкой ${esc(s.card)}: ${esc(s.conflict)}. «Добавить» допишет факт с этой пометкой — цифру в карточке поправь сам.</p>` : ''}
       ${s.quote ? `<blockquote class="sug-quote">«${esc(s.quote)}»</blockquote>` : ''}
       <p class="muted small" style="margin:0">${s.source ? `<button type="button" class="link-btn inline" data-raw="${esc(s.source)}">${esc(s.source)}</button>` : ''}
-        ${s.vacancy ? ` · письмо для <a href="#/v/${enc(s.vacancy)}">${esc(s.vacancy)}</a>` : ''}</p>
+        ${s.vacancy ? ` · ${SUG_ORIGIN[s.origin] ? 'вакансия' : 'письмо для'} <a href="#/v/${enc(s.vacancy)}">${esc(s.vacancy)}</a>` : ''}</p>
       <div class="row sug-actions">
         <label class="sr-only" for="sc-${esc(s.id)}">Карточка</label>
         <select id="sc-${esc(s.id)}" data-sugcard="${esc(s.id)}">${cardOptions(d, s.card)}</select>
@@ -237,7 +243,8 @@ function bindCasesList(sub) {
   }));
   root.querySelectorAll('[data-sugnew]').forEach((b) => b.addEventListener('click', () => {
     const s = casesData.suggestions.find((x) => x.id === b.dataset.sugnew);
-    startNewCaseWith(`${s.fact}${s.quote ? `\n\nКак я говорил в письме: «${s.quote}»` : ''}\n\n`);
+    const said = SUG_ORIGIN[s.origin] ? `Как я ответил${s.question ? ` на вопрос «${s.question}»` : ''}` : 'Как я говорил в письме';
+    startNewCaseWith(`${s.fact}${s.quote ? `\n\n${said}: «${s.quote}»` : ''}\n\n`);
   }));
   root.querySelectorAll('[data-gapnew]').forEach((b) => b.addEventListener('click', () => {
     startNewCaseWith(`Кейс про «${b.dataset.gapnew}»: `);

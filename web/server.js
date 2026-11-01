@@ -25,6 +25,7 @@ const company = require('./company');
 const targets = require('./targets');
 const money = require('./money');
 const answerLib = require('./answer-lib');
+const answerFacts = require('./answer-facts');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -109,6 +110,8 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.companyDays = company.validDays();
   info.whyUs = company.readWhy(store.outDir(name));
   info.whyUsDictation = store.app(name).whyUsDictation || '';
+  info.whyUsFacts = answerFactsFor(name, WHY_DICT_Q, info.whyUsDictation);
+  info.submittedAnswers = (info.submittedAnswers || []).map((x) => ({ ...x, facts: answerFactsFor(name, x.q, x.a) }));
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
@@ -248,7 +251,8 @@ app.post('/api/vacancies/:name/submitted-answers', wrap(async (req, res) => {
   const item = { id: crypto.randomUUID().slice(0, 8), ...pair, at: new Date().toISOString() };
   (a.submittedAnswers = a.submittedAnswers || []).push(item);
   store.save();
-  res.json(item);
+  startAnswerFacts({ vacancy: name, origin: 'submitted', question: item.q, answer: item.a }); // C13
+  res.json({ ...item, facts: answerFactsFor(name, item.q, item.a) });
 }));
 
 app.patch('/api/vacancies/:name/submitted-answers/:id', wrap(async (req, res) => {
@@ -259,7 +263,8 @@ app.patch('/api/vacancies/:name/submitted-answers/:id', wrap(async (req, res) =>
   try { pair = answerPair(req.body); } catch (e) { return res.status(400).json({ error: e.message }); }
   Object.assign(item, pair, { updated: new Date().toISOString() });
   store.save();
-  res.json(item);
+  if (item.source !== 'form' || item.byUser) startAnswerFacts({ vacancy: name, origin: item.source === 'form' ? 'form' : 'submitted', question: item.q, answer: item.a }); // C13
+  res.json({ ...item, facts: answerFactsFor(name, item.q, item.a) });
 }));
 
 app.delete('/api/vacancies/:name/submitted-answers/:id', wrap(async (req, res) => {
@@ -743,7 +748,7 @@ function readInterview(name) {
   try { prep = JSON.parse(fs.readFileSync(path.join(dir, '07-interview.json'), 'utf8')); } catch {}
   let log = [];
   try { log = fs.readFileSync(path.join(dir, '07-practice.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch {}
-  return { prep, practice: log };
+  return { prep, practice: log.map((r) => ({ ...r, facts: answerFactsFor(name, r.question, r.answer) })) };
 }
 
 // Общий банк историй: истории из всех подготовок, без дублей по карточке и теме
@@ -867,6 +872,7 @@ function runWhyUs(name, { prev = '', error = '', retry = false } = {}) {
   if (!research) throw new Error('сначала разбор компании');
   const cv = applyMsgCv(name);
   const dictation = String(store.app(name).whyUsDictation || '').trim();
+  if (dictation && !retry) startAnswerFacts({ vacancy: name, origin: 'whyus', question: WHY_DICT_Q, answer: dictation }); // C13
   const job = runJob({ kind: 'whyus', target: name, system: prompts.WHY_SYSTEM,
     prompt: prompts.whyUs({ research, say, pain: store.app(name).fit?.pain || '', cv: cv.text, cards: readText(path.join(CARDS_DIR, 'INDEX.md')),
       voice: readText(VOICE), insights: vacancyInsights(name).slice(0, 2), dictation, prev, error }),
@@ -1170,6 +1176,7 @@ app.post('/api/topics/:slug/submit', wrap(async (req, res) => {
   res.json(r);
 }));
 
+const WHY_DICT_Q = 'Почему тебе интересна эта компания';
 const WHY_Q = /why (do you want|would you like) to (work|join)|why us\b|why (this|our) company|what attracts you/i;
 // Тренажёр: вопрос + твой ответ (голосом или текстом) → оценка 1–4, чего не хватило, уточнения. Без похвалы и переписывания
 app.post('/api/vacancies/:name/practice', agentReady, wrap(async (req, res) => {
@@ -1196,6 +1203,7 @@ app.post('/api/vacancies/:name/practice', agentReady, wrap(async (req, res) => {
         culture: r.culture && (r.culture.said || r.culture.missed) ? { said: (r.culture.said || []).slice(0, 5), missed: (r.culture.missed || []).slice(0, 5) } : null };
       fs.appendFileSync(path.join(dir, '07-practice.jsonl'), `${JSON.stringify(rec)}\n`);
       fs.rmSync(out, { force: true });
+      startAnswerFacts({ vacancy: name, origin: 'practice', question, answer }); // C13
     },
   });
   attach(name, 'practice', job);
@@ -1577,7 +1585,14 @@ app.post('/api/vacancies/:name/form/answers', wrap(async (req, res) => {
     const a = merged.answers[key];
     // Ответ на вопрос «нет в базе» — в базу знаний, чтобы в следующий раз агент знал его сам
     if (a?.status === 'ask' && typeof value === 'string') {
-      if (a.kind === 'experience') saved.push(`база кейсов: ${autofill.saveExperienceAnswer({ question: f.label, answer: value, vacancy: name })}`);
+      if (a.kind === 'experience') {
+        const file = autofill.saveExperienceAnswer({ question: f.label, answer: value, vacancy: name });
+        saved.push(`база кейсов: ${file}`);
+        // C13: развёрнутый ответ разбирается на факты; короткий — предлагается целиком, как раньше
+        if (!startAnswerFacts({ vacancy: name, origin: 'form', question: f.label, answer: value, rawFile: file })) {
+          cases.addSuggestions([{ fact: `${f.label.slice(0, 140)} → ${value.slice(0, 140)}`, quote: value.slice(0, 400), card: null, source: file, vacancy: name }], 'form');
+        }
+      }
       else saved.push(`стандартные ответы: ${autofill.saveFactualAnswer({ question: f.label, answer: value, section: a.section })}`);
     }
     autofill.remember([{ label: f.label, value, source: 'ты' }]);
@@ -1621,7 +1636,10 @@ app.post('/api/vacancies/:name/form/submitted', wrap(async (req, res) => {
     // Только ответы на вопросы: контакты из шапки CV и файлы не нужны в «Моих ответах»
     if (field?.type === 'file' || f.source === 'шапка CV' || !f.label || have.has(autofill.norm(f.label))) continue;
     const v = Array.isArray(f.value) ? f.value.join(', ') : String(f.value);
-    a.submittedAnswers.push({ id: crypto.randomUUID().slice(0, 8), q: f.label.slice(0, 300), a: v.slice(0, 5000), at: new Date().toISOString(), source: 'form' });
+    // byUser — текст писал или правил кандидат (в форме «ты»), а не вариант агента: только такие разбираются на факты (C13)
+    const byUser = f.source === 'ты';
+    a.submittedAnswers.push({ id: crypto.randomUUID().slice(0, 8), q: f.label.slice(0, 300), a: v.slice(0, 5000), at: new Date().toISOString(), source: 'form', byUser });
+    if (byUser) startAnswerFacts({ vacancy: name, origin: 'form', question: f.label.slice(0, 300), answer: v.slice(0, 5000) });
     added += 1;
   }
   autofill.remember(run.filled.filter((f) => merged.fields.find((x) => x.key === f.key)?.type !== 'file'));
@@ -2162,6 +2180,46 @@ function collectCardSuggestions(name, origin) {
   const n = cases.addSuggestions(items.map((x) => ({ ...x, source: x.source || fallback, vacancy: name })), origin);
   if (n) events.add({ type: 'cases', title: `База кейсов: ${n} ${n === 1 ? 'новый факт' : 'новых факта(ов)'} из надиктовки`, text: name, link: '#/cases/suggestions' });
 }
+
+// C13: развёрнутый ответ кандидата → факты, которых нет в базе, в «Предложено добавить»; история → подсказка «сделать кейсом».
+// Один ход Haiku, сразу после ответа; короткие и фактические ответы, повторы и запуски без залогиненного CLI — пропускаются
+function startAnswerFacts({ vacancy, origin, question, answer, rawFile }) {
+  question = String(question || '').trim();
+  answer = String(answer || '').trim();
+  if (!answerFacts.eligible(question, answer) || ['logged_out', 'missing'].includes(getStatus().state)) return null;
+  const k = answerFacts.key(vacancy, question, answer);
+  const prev = answerFacts.record(k);
+  if (prev && prev.state !== 'error') return prev;
+  const raw = rawFile || prev?.raw || answerFacts.saveRaw({ question, answer, vacancy, origin });
+  const job = runJob({ kind: 'answerfacts', target: vacancy, system: prompts.ANSWER_FACTS_SYSTEM,
+    prompt: prompts.answerFacts({ question, answer, origin: answerFacts.ORIGINS[origin] || origin,
+      index: readText(path.join(CARDS_DIR, 'INDEX.md')), cards: answerFacts.closest(question, answer) }),
+    logFile: path.join(store.DATA, 'answer-facts', `${k}.log`),
+    onDone: async (j) => {
+      const r = oneJSON(j.finalText);
+      const c = answerFacts.check(r, answer);
+      const n = cases.addSuggestions(c.facts.map((f) => ({ ...f, source: raw, vacancy, question })), origin);
+      answerFacts.set(k, { state: 'done', found: c.facts.length, added: n, story: c.story, insight: !!r.insight, dropped: c.dropped, done: new Date().toISOString() });
+      if (n) events.add({ type: 'cases', title: `База кейсов: ${n} ${n === 1 ? 'новый факт' : 'новых факта(ов)'} из ответа`, text: `${question.slice(0, 80)} · ${vacancy}`, link: '#/cases/suggestions' });
+    } });
+  job.listeners.add((ev) => { if (ev.done && job.error) answerFacts.set(k, { state: 'error', error: String(job.error).slice(0, 200) }); });
+  return answerFacts.set(k, { state: 'running', origin, vacancy, question, answer, raw, at: new Date().toISOString(), jobId: job.id, error: null });
+}
+const answerFactsFor = (vacancy, question, answer) => (answerFacts.eligible(question, answer) ? answerFacts.get(answerFacts.key(vacancy, question, answer)) : null);
+
+app.get('/api/answer-facts/:key', wrap(async (req, res) => {
+  const r = answerFacts.get(String(req.params.key));
+  if (!r) return res.status(404).json({ error: 'нет такого разбора' });
+  res.json(r);
+}));
+
+app.post('/api/answer-facts/:key/retry', agentReady, wrap(async (req, res) => {
+  const r = answerFacts.record(String(req.params.key));
+  if (!r) return res.status(404).json({ error: 'нет такого разбора' });
+  if (r.state === 'running') return res.status(409).json({ error: 'уже разбирается' });
+  answerFacts.set(String(req.params.key), { state: 'error' });
+  res.json(startAnswerFacts({ vacancy: r.vacancy, origin: r.origin, question: r.question, answer: r.answer, rawFile: r.raw }) ? { ok: true } : { ok: false });
+}));
 
 // C9: на какие карточки опираются фит, CV и письмо
 function cardRefs(name, info) {

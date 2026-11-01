@@ -93,15 +93,14 @@ function preAnswers(fields, dir) {
   return out;
 }
 
-// Ответ про опыт — твоя надиктовка: сохраняется дословно в raw/ и предлагается в базу кейсов (C9)
+// Ответ про опыт — твоя надиктовка: сохраняется дословно в raw/; факты из него предлагаются в базу кейсов (C9, C13)
 function saveExperienceAnswer({ question, answer, vacancy }) {
   const d = new Date().toISOString().slice(0, 10);
   const slug = norm(vacancy).replace(/ /g, '-').slice(0, 40) || 'form';
   let file = `${d}-form-${slug}.md`;
   for (let i = 2; fs.existsSync(path.join(cases.RAW, file)); i++) file = `${d}-form-${slug}-${i}.md`;
   fs.writeFileSync(path.join(cases.RAW, file), `---\ndate: ${d}\ntopic: ответ в форме заявки — ${vacancy}\nvacancy: vacancies/${vacancy}.md\ntype: form-answer\n---\n\nВопрос: ${question}\n\n${answer}\n`);
-  cases.addSuggestions([{ fact: `${question.slice(0, 140)} → ${answer.slice(0, 140)}`, quote: answer.slice(0, 400), card: null, source: file, vacancy }], 'form');
-  return file;
+  return file; // факты из ответа предлагает сервер (C13, answer-facts)
 }
 
 // Фактический ответ — в раздел стандартных ответов (S4); раздел выбирает агент, иначе «Other / прочее»

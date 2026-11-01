@@ -428,6 +428,38 @@ ${String(text).slice(0, 8000)}
 "looks_like_case": false, "case_hint": "", "multiple": false, "parts": []}`;
 }
 
+// ---------- C13 · ответы → база кейсов (docs/specs/37-answers-to-cases.md) ----------
+const ANSWER_FACTS_SYSTEM = 'Ты сверяешь ответ кандидата с его базой кейсов и выписываешь только то, что он сам сказал и чего в базе нет. Ничего не додумываешь. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function answerFacts({ question, answer, origin, index, cards }) {
+  return `Где кандидат отвечал: ${origin}.
+Вопрос: ${question}
+Ответ кандидата (дословно, возможны ошибки распознавания речи):
+"""
+${String(answer).slice(0, 6000)}
+"""
+
+Реестр карточек базы кейсов:
+${String(index || '').slice(0, 6000)}
+
+Ближайшие карточки целиком (что уже есть в базе):
+${cards.map((c) => `=== ${c.id} ===\n${c.text}`).join('\n\n') || '—'}
+
+Задача:
+1. "facts" — конкретные факты опыта кандидата из ответа, которых НЕТ в карточках: цифра, эксперимент и его итог, решение, масштаб, срок, инструмент.
+   Каждый факт — одна фраза по-русски. "quote" — фрагмент ответа ДОСЛОВНО, без правок (можно несколько кусков через «…»).
+   Каждое число факта должно стоять в "quote" и записано так же, как в ответе (в ответе «one dollar» — в факте «один доллар», не «$1»). "card" — id карточки, к которой факт относится, или null.
+   Если факт уже есть в карточке — не выписывай. Если противоречит карточке (другая цифра, другой срок) — выпиши и заполни
+   "conflict": что именно расходится («в карточке 12%, в ответе 15%»), иначе null.
+   Не факты: мнения, общие слова («я всегда опираюсь на данные»), планы, оценки себя. Ничего не обобщай сверх сказанного. 0 фактов — нормально.
+2. "story" — если в ответе целая история (ситуация → что сделал → результат), которой нет ни в одной карточке:
+   {"is_new": true, "title": "≤ 8 слов по-русски", "why": "почему это отдельный кейс", "card": null}.
+   Если история уже есть в карточке — {"is_new": false, "title": "…", "why": "…", "card": "<id>"}. Если истории нет — null.
+3. "insight" — true, если ответ в основном про мнение или взгляд кандидата, а не про его опыт.
+
+Верни JSON: {"facts": [{"fact": "…", "quote": "…", "card": null, "conflict": null}], "story": null, "insight": false}`;
+}
+
 // ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
 const TOPICS_SYSTEM = 'Ты помогаешь кандидату подготовиться к собеседованию: выбираешь темы для освежения знаний. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
@@ -588,5 +620,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
 Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
 }
 
-module.exports = { whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

@@ -116,6 +116,8 @@ def api(base):
     ins = json.loads(get(base, "/api/insights")[2])
     for i in ins["items"]:
         ok(bool(i.get("id")) and bool(i.get("title")) and bool(i.get("essence")), f"инсайт {i.get('id')}: нет заголовка или сути")
+    code, _, _ = get(base, "/api/answer-facts/nope")
+    ok(code == 404, f"неизвестный разбор ответа → {code}")
     code, _, _ = get(base, "/api/topics/..%2Fetc")
     ok(code in (400, 404), f"тема с плохим slug → {code}")
     items = json.loads(get(base, "/api/vacancies")[2])["items"]
@@ -140,6 +142,10 @@ def api(base):
             w = d.get("whyUs")
             if w:
                 ok(bool(w.get("short")) and bool(w.get("long")) and "check" in w, f"почему мы {it['name']}: нет вариантов или проверки")
+            # C13: разбор ответа для базы кейсов — у каждой записи ключ и состояние, текст ответа наружу не уходит
+            recs = [x.get("facts") for x in (d.get("submittedAnswers") or [])] + [r.get("facts") for r in ((d.get("interview") or {}).get("practice") or [])] + [d.get("whyUsFacts")]
+            for f in [r for r in recs if r]:
+                ok(bool(f.get("key")) and f.get("state") in ("running", "done", "error") and "answer" not in f, f"факты из ответа {it['name']}: плохая запись")
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")

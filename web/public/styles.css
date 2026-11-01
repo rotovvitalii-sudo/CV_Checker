@@ -622,6 +622,11 @@ table.grid td.num { white-space: nowrap; }
 .sug-list { display: flex; flex-direction: column; gap: 12px; }
 .sug { gap: 8px; }
 .sug-fact { margin: 0; }
+/* C13: что нашлось в ответе для базы кейсов */
+.af-line { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 8px; }
+.af-line .spin { width: 10px; height: 10px; }
+.sug-src { margin: 0 0 4px; }
+.sug-conflict { margin: 4px 0 0; }
 .sug-quote { margin: 0; padding: 6px 12px; border-left: 3px solid var(--line); color: var(--muted); font-style: italic; }
 .sug-actions { gap: 8px; flex-wrap: wrap; }
 .sug-actions select { max-width: 100%; }

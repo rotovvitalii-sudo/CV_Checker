@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -551,6 +551,7 @@ function renderDetail() {
   bindDetail();
   bindAnswers(d);
   bindSubmitted(d);
+  pollFacts(); // C13
   loadFormCard(d);
   loadAlive(d);
   bindOutline(d);
@@ -624,6 +625,7 @@ function whyUsSection(d, full) {
     <div class="dict"><textarea id="whyDict" rows="2" placeholder="Нажми 🎤 и скажи по-русски">${esc(d.whyUsDictation)}</textarea>
       <button class="mic" id="whyMic" type="button" title="Надиктовать" aria-label="Надиктовать причину">🎤</button></div>
     <div class="hint" id="whyMicHint"></div>
+    ${d.whyUsFacts ? factsLine(d.whyUsFacts, 'Почему тебе интересна эта компания', d.whyUsDictation) : ''}
     <div class="row" style="margin-top:6px;gap:8px">
       ${busy ? '' : w ? `<button type="button" class="small" data-why="again">Другой вариант</button>
         ${whyEdit ? '<button type="button" class="small primary" id="whySave">Сохранить правку</button><button type="button" class="link-btn inline" id="whyCancel">отмена</button>'
@@ -633,6 +635,7 @@ function whyUsSection(d, full) {
 }
 
 function bindWhyUs(d) {
+  pollFacts(); // C13
   const ta = $('#whyDict');
   if (ta) {
     const save = async () => { if (ta.value !== d.whyUsDictation) { d.whyUsDictation = ta.value; try { await api(`/api/vacancies/${enc(d.name)}`, { method: 'PATCH', body: { whyUsDictation: ta.value } }); } catch {} } };
@@ -1552,7 +1555,8 @@ function interviewBlock(d) {
         ${last.culture ? `<div class="row small" style="gap:6px;margin-top:6px"><span class="muted">Ценности компании:</span>${(last.culture.said || []).map((v) => `<span class="chip good">${esc(v)}</span>`).join('')}${(last.culture.missed || []).map((v) => `<span class="chip bad" title="не прозвучало">${esc(v)}</span>`).join('')}</div>` : ''}
         ${(last.missing || []).length ? `<p class="small" style="margin:6px 0 2px">Не хватило:</p><ul class="tight small">${last.missing.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
         ${(last.followups || []).map((f) => `<div class="row small" style="gap:6px;margin-top:4px"><span>↳ ${esc(f)}</span><button type="button" class="link-btn inline" data-follow="${esc(f)}">ответить на уточнение</button></div>`).join('')}
-        ${attempts.length > 1 ? `<p class="muted small" style="margin:6px 0 0">Попытки: ${attempts.map((a) => `${a.score}/4`).join(' → ')}</p>` : ''}</div>` : ''}
+        ${attempts.length > 1 ? `<p class="muted small" style="margin:6px 0 0">Попытки: ${attempts.map((a) => `${a.score}/4`).join(' → ')}</p>` : ''}
+        ${factsLine(last.facts, last.question, last.answer)}</div>` : ''}
       ${forgot.length ? `<p class="small" style="margin-top:10px"><strong>Что я каждый раз забываю сказать:</strong> ${forgot.map((f) => `${esc(f.text)} (${f.n}×)`).join('; ')}</p>` : ''}
     </section>` : ''}
   </div>`;
@@ -1713,6 +1717,7 @@ function bindTopic(d, t, data) {
 }
 
 function bindInterview(d) {
+  pollFacts(); // C13
   $('#tpGen')?.addEventListener('click', () => {
     if (d.topics && !confirm('Пересобрать список тем? Сданные темы останутся сданными (библиотека общая).')) return;
     openTopic = null;
@@ -2101,7 +2106,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -3295,6 +3300,62 @@ function bindFormCard(d, st) {
 
 // ---------- мои ответы при подаче (C6, docs/specs/17-submitted-answers.md) ----------
 
+// ---------- C13 · ответы → база кейсов (docs/specs/37-answers-to-cases.md) ----------
+// Строка под ответом: что нашлось для базы кейсов и «сделать кейсом». Текст ответа держим в реестре, а не в атрибутах
+const afSrc = {};
+let afSeq = 0;
+function factsLine(f, q, a) {
+  const id = `af${++afSeq}`;
+  afSrc[id] = { q, a, f };
+  const words = String(a || '').trim().split(/\s+/).filter(Boolean).length;
+  const mk = (label) => `<button type="button" class="link-btn inline" data-mkcase="${id}">${label}</button>`;
+  if (!f) return words >= 40 ? `<div class="af-line small" data-af="${id}">${mk('сделать кейсом')}</div>` : '';
+  if (f.state === 'running') return `<div class="af-line small muted" data-af="${id}" data-afrun="${esc(f.key)}"><span class="spin"></span>ищу в ответе факты, которых нет в базе…</div>`;
+  if (f.state === 'error') return `<div class="af-line small" data-af="${id}"><span class="warn-text">разбор для базы не удался</span>
+    <button type="button" class="link-btn inline" data-afretry="${esc(f.key)}">ещё раз (≈ $0.003)</button> · ${mk('сделать кейсом')}</div>`;
+  const s = f.story;
+  return `<div class="af-line small" data-af="${id}"><span class="muted">В базу:</span>
+    ${f.added ? `<a href="#/cases/suggestions">предложено фактов: ${f.added}</a>` : f.found ? `<span class="muted">факты уже предложены раньше</span>` : '<span class="muted">новых фактов нет</span>'}
+    ${s?.is_new ? ` · <strong>в базе этого нет</strong> — ${mk(`сделать кейсом «${esc(s.title)}»`)}`
+      : s?.card ? ` · похоже на <a href="#/cases/card/${enc(s.card)}">${esc(s.card)}</a> — <button type="button" class="link-btn inline" data-mkcase="${id}" data-target="${esc(s.card)}">дополнить карточку</button>`
+      : ` · ${mk('сделать кейсом')}`}
+    ${f.insight ? ' · <a href="#/cases/insights">похоже на мнение — сохрани как инсайт</a>' : ''}</div>`;
+}
+// Делегирование на документе: строки рисуются в разных блоках заявки
+document.addEventListener('click', async (e) => {
+  const mk = e.target.closest('[data-mkcase]');
+  if (mk) {
+    const src = afSrc[mk.dataset.mkcase];
+    if (!src) return;
+    const text = `Вопрос: ${src.q}\n\nМой ответ: ${src.a}\n\n`;
+    try { await api('/api/cases/new-dictation', { method: 'PUT', body: { text } }); } catch { /* текст можно вставить руками */ }
+    location.hash = mk.dataset.target ? `#/cases/new?target=${enc(mk.dataset.target)}` : '#/cases/new';
+    return;
+  }
+  const rt = e.target.closest('[data-afretry]');
+  if (rt) {
+    rt.disabled = true;
+    try { await api(`/api/answer-facts/${enc(rt.dataset.afretry)}/retry`, { method: 'POST' }); } catch (err) { alert(err.message); }
+    loadDetail();
+  }
+});
+// Разбор идёт ~15 с после ответа: опрашиваем только свою строку, страницу (и недописанный ответ) не трогаем
+function pollFacts() {
+  document.querySelectorAll('[data-afrun]').forEach((el) => {
+    if (el.dataset.polling) return;
+    el.dataset.polling = '1';
+    const tick = async () => {
+      if (!el.isConnected) return;
+      let f;
+      try { f = await api(`/api/answer-facts/${enc(el.dataset.afrun)}`); } catch { return; }
+      if (f.state === 'running') { setTimeout(tick, 4000); return; }
+      const src = afSrc[el.dataset.af];
+      el.outerHTML = factsLine(f, src?.q, src?.a);
+    };
+    setTimeout(tick, 4000);
+  });
+}
+
 let subEdit = null; // id пары в режиме правки
 
 // Буфер обмена: Clipboard API, а где он запрещён (панель браузера Claude) — через скрытое поле
@@ -3331,6 +3392,7 @@ function submittedItem(x) {
       <button type="button" class="link-btn inline" data-subcopy="${esc(x.id)}">Скопировать</button>
       <button type="button" class="link-btn inline" data-subedit="${esc(x.id)}">Изменить</button>
       <button type="button" class="link-btn inline danger" data-subdel="${esc(x.id)}">Удалить</button></div>
+    ${x.source === 'form' && !x.byUser ? '' : factsLine(x.facts, x.q, x.a)}
   </li>`;
 }
 
@@ -3364,6 +3426,7 @@ function bindSubmitted(d) {
     const v = keep ? [$('#subQ').value, $('#subA').value] : null;
     card.outerHTML = submittedBlock(d);
     bindSubmitted(d);
+    pollFacts();
     if (v) [$('#subQ').value, $('#subA').value] = v;
   };
   $('#subNew').addEventListener('submit', async (e) => {
