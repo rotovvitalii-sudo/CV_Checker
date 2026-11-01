@@ -192,9 +192,9 @@ ${hasVoice ? 'Голос — по профилю `knowledge-base/voice.md` (пр
 }
 
 // W5: подготовка к собеседованию и тренажёр
-function interviewPrep({ name, hasCV, fit, insights, culture }) {
+function interviewPrep({ name, hasCV, fit, insights, culture, whyUs }) {
   return `${BACKGROUND}
-${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}${cultureBlock(culture, '«О себе» и fits историй — с акцентом и словами этих ценностей (факты те же). В 07-interview.json добавь "culture_used": ["<ценность>", …] — только реально использованные.')}${insightsBlock(insights, 'Опирайся на инсайты в рискованных вопросах (в hint: «опора: insight <id> — …», для вопросов «что вы думаете о / как бы вы подошли») и в вопросах к компании. В 07-interview.json добавь "insights_used": ["<id>", …] — только реально использованные.')}
+${whyUs?.short ? `\nОтвет кандидата «почему мы» (готов, проверен): ${whyUs.short}\nЧасть «о себе» → why не должна ему противоречить.\n` : ''}${painBlock(fit, 'Используй боль в «почему мы», «что сделаете за 90 дней» и в вопросах к компании («почему открыли позицию?»).')}${cultureBlock(culture, '«О себе» и fits историй — с акцентом и словами этих ценностей (факты те же). В 07-interview.json добавь "culture_used": ["<ценность>", …] — только реально использованные.')}${insightsBlock(insights, 'Опирайся на инсайты в рискованных вопросах (в hint: «опора: insight <id> — …», для вопросов «что вы думаете о / как бы вы подошли») и в вопросах к компании. В 07-interview.json добавь "insights_used": ["<id>", …] — только реально использованные.')}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «подготовка», для «${name}».
 - Вакансия: \`vacancies/${name}.md\`; CV: ${hasCV ? `\`output/${name}/CV.md\`` : '`knowledge-base/base-cv.md`'}
 - Пробелы: \`output/${name}/02-match-report.md\`, \`report.md\`, \`summary.json\` / \`03-verdict.json\` (вердикт), если есть
@@ -205,9 +205,9 @@ ${painBlock(fit, 'Используй боль в «почему мы», «что
 }
 
 // Тренажёр: маленький контекст (без чтения базы) — дёшево на каждую попытку
-function practice({ name, question, answer, out, values }) {
+function practice({ name, question, answer, out, values, whyUs }) {
   return `${BACKGROUND}
-${values?.length ? `\nГлавные ценности компании (W9): ${values.join('; ')}. Добавь в JSON "culture": {"said": [ценности, которые прозвучали в ответе — словами или по смыслу], "missed": [остальные из этих, если к вопросу они подходили]}. На оценку score это не влияет.\n` : ''}
+${whyUs ? `\nЭто вопрос «почему мы». Добавь в JSON "why": {"company": true|false — назвал ли кандидат конкретику о компании (задача, продукт, новость, ценность), а не общие слова; "fact": true|false — привёл ли свой факт опыта с результатом}.\n` : ''}${values?.length ? `\nГлавные ценности компании (W9): ${values.join('; ')}. Добавь в JSON "culture": {"said": [ценности, которые прозвучали в ответе — словами или по смыслу], "missed": [остальные из этих, если к вопросу они подходили]}. На оценку score это не влияет.\n` : ''}
 Задача: скил interview-prep (\`.claude/skills/interview-prep/SKILL.md\`), режим «тренажёр». Базу знаний не читай.
 Вакансия (для контекста роли): \`vacancies/${name}.md\` — только первые 60 строк.
 Вопрос интервьюера: ${JSON.stringify(question)}
@@ -319,9 +319,17 @@ function masterImport({ id, fileName }) {
   Для conflicts сверься с \`knowledge-base/master-cv.md\` и \`knowledge-base/cards/INDEX.md\`.`;
 }
 
-function answers({ name, hasCV, insights }) {
+// W9a: готовый ответ «почему мы» — основа для вопросов формы о мотивации к компании
+function whyUsBlock(w) {
+  if (!w?.short) return '';
+  return `\nГотовый ответ кандидата «почему мы» (проверен: факты из CV и разбора компании):\n- short: ${w.short}\n- long: ${w.long}
+Для вопросов формы о мотивации к компании (why us / why join / what attracts you / why this company) строй варианты на его основе, подгоняя под лимит;
+в sources ответа пиши "why-us". Для других вопросов не используй.\n`;
+}
+
+function answers({ name, hasCV, insights, whyUs }) {
   return `${BACKGROUND}
-${insightsBlock(insights, 'Для вопросов о мнении, мотивации и трендах можно опираться на инсайт — в sources ответа пиши "insight:<id>". Для фактических вопросов и вопросов об опыте — нельзя.')}
+${whyUsBlock(whyUs)}${insightsBlock(insights, 'Для вопросов о мнении, мотивации и трендах можно опираться на инсайт — в sources ответа пиши "insight:<id>". Для фактических вопросов и вопросов об опыте — нельзя.')}
 Задача: выполни скил form-answers (\`.claude/skills/form-answers/SKILL.md\`) для «${name}».
 - Вопросы формы: \`output/${name}/05-questions.json\`
 - Вакансия: \`vacancies/${name}.md\`
@@ -344,9 +352,9 @@ ${limit} компаний: сначала компании без автосбо
 }
 
 // S4 P1 · один ответ формы заново по комментарию кандидата
-function answerRedo({ name, item, comment, out, hasCV, insights }) {
+function answerRedo({ name, item, comment, out, hasCV, insights, whyUs }) {
   return `${BACKGROUND}
-${insightsBlock(insights, 'Для вопроса о мнении, мотивации или трендах можно опираться на инсайт — в sources пиши "insight:<id>".')}
+${whyUsBlock(whyUs)}${insightsBlock(insights, 'Для вопроса о мнении, мотивации или трендах можно опираться на инсайт — в sources пиши "insight:<id>".')}
 Задача: скил form-answers (\`.claude/skills/form-answers/SKILL.md\`) — **переделай один ответ** для «${name}».
 Вопрос: «${item.q}»${item.limit ? ` (лимит ${item.limit} символов)` : ''}.
 Текущие варианты:
@@ -542,5 +550,43 @@ ${stories.length ? `\nБанк историй (STAR): ${stories.map((x) => `${x.
 "why_company": "…"}`;
 }
 
-module.exports = { companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- W9a · «почему мы» (docs/specs/36-why-us.md): один ход, контекст кладёт сервер ----------
+const WHY_SYSTEM = 'Ты готовишь ответ кандидата на вопрос интервью «Why do you want to work here?» — по-английски, от его лица. Факты — только из данного. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function whyUs({ research, say, pain, cv, cards, voice, insights, dictation, prev, error }) {
+  const r = research;
+  const facts = [
+    ...r.values.filter((v) => !v.unverified).slice(0, 5).map((v) => `- ценность «${v.name}» (их слова: ${v.their_words.join(', ')}): ${v.meaning} — ${v.evidence.map((e) => e.url).join(' ')}`),
+    ...r.snapshot.news.filter((n) => n.url).map((n) => `- новость ${n.date || ''}: ${n.title} — ${n.url}`),
+  ].join('\n');
+  const src = r.sources.map((x) => x.url).slice(0, 10).join(' ');
+  return `Компания ${r.company}: ${r.snapshot.what} ${r.snapshot.product ? `Продукт: ${r.snapshot.product}.` : ''} ${r.snapshot.stage ? `Стадия: ${r.snapshot.stage}.` : ''}
+Источники общей справки: ${src}
+Конкретика о компании (с ссылками — только их можно указывать в trace):
+${facts}
+${pain ? `\nЧто болит у компании (разбор вакансии): ${pain}\n` : ''}
+Что сказать из опыта (подобрано раньше): ${say.say.filter((x) => x.card).map((x) => `${x.value} → карточка ${x.card}: ${x.angle}`).join('; ') || '—'}
+
+CV кандидата — единственный источник цифр о нём:
+\"\"\"
+${cv.slice(0, 8000)}
+\"\"\"
+Реестр карточек (id — первая колонка):
+${cards.slice(0, 4000)}
+${voice ? `\nКак кандидат говорит (только манера, не факты):\n${voice.slice(0, 2500)}\n` : ''}${insights?.length ? `\nВзгляды кандидата (инсайты — не опыт, можно как «I believe …»):\n${insights.map((x) => `- [insight:${x.id}] ${x.essence}`).join('\n')}\n` : ''}
+${dictation ? `Почему кандидату интересна компания — его надиктовка (основа части 1, держись близко к ней; деньги, удалёнку и уход с работы в ответ НЕ бери):\n\"\"\"\n${dictation.slice(0, 2000)}\n\"\"\"` : 'Надиктовки мотивации нет: строй часть 1 на совпадении их задачи с опытом кандидата, без выдуманных чувств и «давно пользуюсь продуктом».'}
+
+Напиши два варианта ответа: "short" — 50–80 слов (~25 секунд вслух), "long" — 110–160 слов (~55 секунд).
+Три части: (1) что именно в компании — их задача, продукт, новость или ценность, конкретно; (2) почему это моё — один факт опыта с цифрой из CV;
+(3) что я сделаю у них или чему хочу научиться — без обещаний результата.
+Правила: разговорно, предложения разной длины; без passionate, dream company, always admired, excited to, thrilled, perfect fit, leverage, delve,
+robust, seamless, proven track record; без длинных тире; ни слова про деньги, удалёнку и прошлую работу как причину.
+"theses_ru" — 3 тезиса по-русски, по одному на часть, чтобы сказать своими словами.
+"trace" — каждое предложение обоих вариантов: {"variant": "short|long", "text": "предложение", "tag": "company|fact|motivation|link",
+"url": "ссылка из списка выше (для company)", "card": "id карточки или cv (для fact)"}.
+${error ? `\nПрошлый вариант не прошёл проверку: ${error}. Исправь.\nПрошлый вариант: ${prev}\n` : prev ? `\nНужен другой вариант, не похожий на прошлый: ${prev}\n` : ''}
+Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
+}
+
+module.exports = { whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

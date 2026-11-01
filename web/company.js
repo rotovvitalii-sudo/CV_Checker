@@ -143,4 +143,38 @@ function view(dir, slug) {
   return r ? { research: r, say: s && s.slug === r.slug ? s : null, stale: !!(s && s.researchAt !== r.at) } : null;
 }
 
-module.exports = { DIR, SAY_FILE, slugify, slugOk, domainFrom, read, normResearch, checkLinks, save, readSay, sayFile, normSay, forPrompt, view, validDays, missingNumbers };
+// ---------- W9a · «почему мы» (docs/specs/36-why-us.md) ----------
+const WHY_FILE = '09-why-us.json';
+const whyFile = (dir) => path.join(dir, WHY_FILE);
+const readWhy = (dir) => readJSON(whyFile(dir));
+const WHY_LEN = { short: [50, 80], long: [110, 160] };
+const STOP_PHRASES = ['passionate', 'dream company', 'dream job', 'always admired', 'excited to', 'thrilled', 'perfect fit', 'leverage', 'delve',
+  'robust', 'seamless', 'proven track record', 'i am writing'];
+// Причины, которые на первом звонке не говорят
+const OFF_REASONS = /\b(salary|compensation|pay(ing)? (more|better)|money|remote[- ]first|work(ing)? remotely|from home|laid off|layoff|my (current|last|previous) (company|employer|job))\b/i;
+
+// Проверка варианта без агента: длина, числа (CV или разбор), стоп-фразы, причины, трассировка (компания со ссылкой + мой факт)
+function checkWhy(kind, text, trace, cvText, research) {
+  const n = words(text).length;
+  const [lo, hi] = WHY_LEN[kind];
+  const known = `${cvText}\n${JSON.stringify(research)}`;
+  const miss = missingNumbers(text, known);
+  const low = String(text).toLowerCase();
+  const stops = STOP_PHRASES.filter((p) => low.includes(p));
+  const urls = new Set([...research.values.flatMap((v) => v.evidence.map((e) => e.url)), ...research.snapshot.news.map((x) => x.url), ...research.sources.map((x) => x.url)].filter(Boolean));
+  const t = (Array.isArray(trace) ? trace : []).filter((x) => x.variant === kind);
+  const company = t.filter((x) => x.tag === 'company');
+  const badUrl = company.filter((x) => !urls.has(x.url));
+  const issues = [
+    (n < lo - 5 || n > hi + 10) && `${n} слов, нужно ${lo}–${hi}`,
+    miss.length && `чисел нет ни в CV, ни в разборе: ${miss.join(', ')}`,
+    stops.length && `стоп-фразы: ${stops.join(', ')}`,
+    OFF_REASONS.test(text) && 'причина, которую не говорят на первом звонке (деньги / удалёнка / прошлая работа)',
+    !company.length && 'нет конкретики о компании',
+    badUrl.length && `факт о компании без ссылки из разбора: «${badUrl[0].text?.slice(0, 60) || ''}»`,
+    !t.some((x) => x.tag === 'fact') && 'нет твоего факта из опыта',
+  ].filter(Boolean);
+  return { words: n, issues, pass: !issues.length };
+}
+
+module.exports = { WHY_FILE, whyFile, readWhy, checkWhy, WHY_LEN, DIR, SAY_FILE, slugify, slugOk, domainFrom, read, normResearch, checkLinks, save, readSay, sayFile, normSay, forPrompt, view, validDays, missingNumbers };

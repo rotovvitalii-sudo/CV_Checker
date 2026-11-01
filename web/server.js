@@ -107,6 +107,8 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.topics = topicsInfo(name);
   info.companyResearch = company.view(store.outDir(name), company.slugify(info.company));
   info.companyDays = company.validDays();
+  info.whyUs = company.readWhy(store.outDir(name));
+  info.whyUsDictation = store.app(name).whyUsDictation || '';
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
@@ -127,6 +129,7 @@ app.patch('/api/vacancies/:name', wrap(async (req, res) => {
   }
   if (typeof req.body.dictation === 'string') a.dictation = req.body.dictation;
   if (typeof req.body.formQuestions === 'string') a.formQuestions = req.body.formQuestions.slice(0, 8000);
+  if (typeof req.body.whyUsDictation === 'string') a.whyUsDictation = req.body.whyUsDictation.slice(0, 3000); // W9a
   // W6: этап воронки; статус подтягивается: рекрутер → «Ответили», hiring manager / финал → «Интервью», оффер → «Оффер»
   if (req.body.stage !== undefined) {
     if (!store.FUNNEL.includes(req.body.stage)) return res.status(400).json({ error: 'неизвестный этап' });
@@ -768,7 +771,7 @@ app.post('/api/vacancies/:name/interview', agentReady, wrap(async (req, res) => 
   const before = fs.existsSync(f) ? fs.statSync(f).mtimeMs : 0;
   const job = runJob({
     kind: 'interview', target: name,
-    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit, insights: vacancyInsights(name), culture: cultureFor(name) }),
+    prompt: prompts.interviewPrep({ name, hasCV: fs.existsSync(path.join(dir, 'CV.md')), fit: store.app(name).fit, insights: vacancyInsights(name), culture: cultureFor(name), whyUs: company.readWhy(dir) }),
     logFile: path.join(dir, 'agent-interview.log'),
     onDone: async () => {
       if (!fs.existsSync(f) || fs.statSync(f).mtimeMs === before) throw new Error('агент не записал 07-interview.json');
@@ -810,6 +813,7 @@ function startCompanySay(name, research) {
         if (h && !h.pass) x.issues.push(`humanizer ${h.score} > 3`);
       }
       fs.writeFileSync(company.sayFile(dir), `${JSON.stringify({ ...say, cv: cv.cv }, null, 2)}\n`);
+      runWhyUs(name); // W9a: «почему мы» сразу, ≈ $0.003
     } });
   attach(name, 'companysay', job);
   return job;
@@ -840,6 +844,68 @@ app.post('/api/vacancies/:name/company', agentReady, wrap(async (req, res) => {
   fs.mkdirSync(store.outDir(name), { recursive: true });
   attach(name, 'company', job);
   res.json({ jobId: job.id });
+}));
+
+// ---------- W9a · «почему мы» (docs/specs/36-why-us.md) ----------
+// Один ход Haiku поверх разбора компании; проверка — сервер; не прошла — одна повторная попытка с перечнем ошибок
+async function checkWhyAll(w, cvText, research) {
+  const out = {};
+  for (const k of ['short', 'long']) {
+    out[k] = company.checkWhy(k, w[k] || '', w.trace, cvText, research);
+    const h = w[k] ? await humanizeScore(w[k]) : null;
+    if (h && !h.pass) { out[k].issues.push(`humanizer ${h.score} > 3`); out[k].pass = false; }
+  }
+  out.pass = out.short.pass && out.long.pass;
+  return out;
+}
+const whyIssues = (c) => ['short', 'long'].flatMap((k) => c[k].issues.map((i) => `${k}: ${i}`)).join('; ');
+
+function runWhyUs(name, { prev = '', error = '', retry = false } = {}) {
+  const dir = store.outDir(name);
+  const say = company.readSay(dir);
+  const research = say && company.read(say.slug);
+  if (!research) throw new Error('сначала разбор компании');
+  const cv = applyMsgCv(name);
+  const dictation = String(store.app(name).whyUsDictation || '').trim();
+  const job = runJob({ kind: 'whyus', target: name, system: prompts.WHY_SYSTEM,
+    prompt: prompts.whyUs({ research, say, pain: store.app(name).fit?.pain || '', cv: cv.text, cards: readText(path.join(CARDS_DIR, 'INDEX.md')),
+      voice: readText(VOICE), insights: vacancyInsights(name).slice(0, 2), dictation, prev, error }),
+    logFile: path.join(dir, '09-why-us.log'),
+    onDone: async (j) => {
+      const r = oneJSON(j.finalText);
+      const w = { short: String(r.short || '').trim(), long: String(r.long || '').trim(), theses_ru: (r.theses_ru || []).map(String).slice(0, 3),
+        trace: Array.isArray(r.trace) ? r.trace.slice(0, 30) : [] };
+      if (!w.short || !w.long) throw new Error('модель не вернула оба варианта');
+      const check = await checkWhyAll(w, cv.text, research);
+      if (!check.pass && !retry) { runWhyUs(name, { prev: w.long, error: whyIssues(check), retry: true }); return; }
+      fs.writeFileSync(company.whyFile(dir), `${JSON.stringify({ ...w, check, dictation_used: !!dictation, researchAt: research.at, cv: cv.cv,
+        at: new Date().toISOString(), edited: false }, null, 2)}\n`);
+      insights.markUsed(usedInsightIds(w), name, 'why-us');
+    } });
+  attach(name, 'whyus', job);
+  return job;
+}
+
+app.post('/api/vacancies/:name/why-us', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  if (busy(store.app(name), 'whyus')) return res.status(409).json({ error: 'уже собирается' });
+  if (!company.readSay(store.outDir(name))) return res.status(400).json({ error: 'сначала «Разобрать компанию»' });
+  const prev = req.body?.again ? company.readWhy(store.outDir(name))?.long || '' : '';
+  res.json({ jobId: runWhyUs(name, { prev }).id });
+}));
+
+// Правка руками: сохраняем и проверяем заново без агента (ссылки в правленом тексте уже не отследить — трассировку оставляем прежней)
+app.patch('/api/vacancies/:name/why-us', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const dir = store.outDir(name);
+  const cur = company.readWhy(dir);
+  if (!cur) return res.status(404).json({ error: 'ответа ещё нет' });
+  const research = company.read(company.readSay(dir)?.slug);
+  const next = { ...cur, edited: true, at: new Date().toISOString() };
+  for (const k of ['short', 'long']) if (typeof req.body?.[k] === 'string' && req.body[k].trim()) next[k] = req.body[k].trim().slice(0, 2000);
+  if (research) next.check = await checkWhyAll(next, applyMsgCv(name).text, research);
+  fs.writeFileSync(company.whyFile(dir), `${JSON.stringify(next, null, 2)}\n`);
+  res.json(next);
 }));
 
 // ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
@@ -1092,6 +1158,7 @@ app.post('/api/topics/:slug/submit', wrap(async (req, res) => {
   res.json(r);
 }));
 
+const WHY_Q = /why (do you want|would you like) to (work|join)|why us\b|why (this|our) company|what attracts you/i;
 // Тренажёр: вопрос + твой ответ (голосом или текстом) → оценка 1–4, чего не хватило, уточнения. Без похвалы и переписывания
 app.post('/api/vacancies/:name/practice', agentReady, wrap(async (req, res) => {
   const name = store.safeName(req.params.name);
@@ -1106,13 +1173,14 @@ app.post('/api/vacancies/:name/practice', agentReady, wrap(async (req, res) => {
   const out = path.join(ROOT, outRel);
   const job = runJob({
     kind: 'practice', target: name,
-    prompt: prompts.practice({ name, question, answer, out: outRel, values: (cultureFor(name)?.top || []).map((v) => v.name) }),
+    prompt: prompts.practice({ name, question, answer, out: outRel, values: (cultureFor(name)?.top || []).map((v) => v.name), whyUs: WHY_Q.test(question) }),
     logFile: path.join(store.DATA, 'practice', 'agent.log'),
     onDone: async () => {
       let r;
       try { r = JSON.parse(fs.readFileSync(out, 'utf8')); } catch { throw new Error('агент не записал оценку'); }
       fs.mkdirSync(dir, { recursive: true });
       const rec = { at: new Date().toISOString(), question, answer, score: r.score, criteria: r.criteria || {}, missing: r.missing || [], followups: r.followups || [], parent: req.body.parent || null,
+        why: r.why && typeof r.why === 'object' ? { company: !!r.why.company, fact: !!r.why.fact } : null,
         culture: r.culture && (r.culture.said || r.culture.missed) ? { said: (r.culture.said || []).slice(0, 5), missed: (r.culture.missed || []).slice(0, 5) } : null };
       fs.appendFileSync(path.join(dir, '07-practice.jsonl'), `${JSON.stringify(rec)}\n`);
       fs.rmSync(out, { force: true });
@@ -2164,7 +2232,7 @@ app.post('/api/vacancies/:name/answers', agentReady, wrap(async (req, res) => {
   const hasCV = fs.existsSync(path.join(dir, 'CV.md'));
   const job = runJob({
     kind: 'answers', target: name,
-    prompt: prompts.answers({ name, hasCV, insights: vacancyInsights(name) }),
+    prompt: prompts.answers({ name, hasCV, insights: vacancyInsights(name), whyUs: company.readWhy(store.outDir(name)) }),
     logFile: path.join(dir, 'agent-answers.log'),
     onDone: async () => {
       const f = path.join(dir, '05-answers.json');
@@ -2197,7 +2265,7 @@ app.post('/api/vacancies/:name/answers/:qi/redo', agentReady, wrap(async (req, r
   fs.rmSync(out, { force: true });
   const job = runJob({
     kind: 'answers', target: name,
-    prompt: prompts.answerRedo({ name, item, comment, out: path.relative(ROOT, out), hasCV: fs.existsSync(path.join(dir, 'CV.md')), insights: vacancyInsights(name) }),
+    prompt: prompts.answerRedo({ name, item, comment, out: path.relative(ROOT, out), hasCV: fs.existsSync(path.join(dir, 'CV.md')), insights: vacancyInsights(name), whyUs: company.readWhy(dir) }),
     logFile: path.join(dir, 'agent-answers.log'),
     onDone: async () => {
       let r;

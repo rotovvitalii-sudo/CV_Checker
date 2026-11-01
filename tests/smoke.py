@@ -136,6 +136,10 @@ def api(base):
                 for v in cr["research"]["values"]:
                     ok(bool(v.get("evidence")), f"компания {it['name']}: ценность «{v.get('name')}» без доказательств")
                     ok(all(len(e.get("quote", "").rstrip("…").split()) <= 15 for e in v.get("evidence", [])), f"компания {it['name']}: цитата длиннее 15 слов")
+            # W9a: «почему мы» — оба варианта и проверка
+            w = d.get("whyUs")
+            if w:
+                ok(bool(w.get("short")) and bool(w.get("long")) and "check" in w, f"почему мы {it['name']}: нет вариантов или проверки")
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")

@@ -811,3 +811,9 @@ ul.bucket li.miss { color: var(--muted); }
 .co-vocab { gap: 6px; flex-wrap: wrap; }
 .co-values { padding-left: 18px; }
 .co-values > li { margin: 10px 0; }
+
+/* W9a · «почему мы» */
+.why-sec { margin-bottom: 12px; }
+.why-var { margin: 8px 0; }
+.why-text { margin: 4px 0; line-height: 1.5; }
+.why-theses { margin: 4px 0 8px; }

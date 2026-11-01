@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -595,6 +595,61 @@ function companyFull(cr, say) {
 }
 
 // mode: letter — кратко (что упомянуть и их слова); interview — шпаргалка на один экран
+// ---------- W9a · «почему мы» (docs/specs/36-why-us.md) ----------
+let whyEdit = false;
+const whyQuestion = (d) => `Why do you want to work at ${d.companyResearch?.research?.company || d.company}?`;
+function whyVariant(w, k, label) {
+  const c = w.check?.[k];
+  return `<div class="why-var"><div class="row" style="gap:8px"><strong>${label}</strong>
+      <span class="muted small">${c?.words ?? ''} слов · ~${Math.round((c?.words || 0) / 2.6)} с</span>
+      ${c ? (c.pass ? '<span class="chip good">проверка пройдена</span>' : `<span class="chip warn" title="${esc(c.issues.join('; '))}">${esc(c.issues[0])}</span>`) : ''}</div>
+    ${whyEdit ? `<textarea id="whyEd-${k}" rows="${k === 'long' ? 6 : 3}">${esc(w[k])}</textarea>` : `<p class="why-text">${esc(w[k])}</p>`}</div>`;
+}
+// full — интерактивный блок (надиктовка, правка); иначе — только текст, свёрнуто
+function whyUsSection(d, full) {
+  const w = d.whyUs, j = d.jobs.whyus;
+  const busy = jobBusy(j) || jobBusy(d.jobs.companysay);
+  if (!full) return w ? `<details class="more"><summary>Почему мы — готовый ответ</summary><p class="why-text small">${esc(w.short)}</p></details>` : '';
+  const stale = w && d.companyResearch?.research && w.researchAt !== d.companyResearch.research.at;
+  return `<section class="why-sec"><h4>Почему мы <span class="muted small">— «${esc(whyQuestion(d))}»</span></h4>
+    ${busy ? '<p class="running small"><span class="spin"></span>Собираю ответ «почему мы»…</p>' : j?.state === 'error' ? `<p class="error small">${esc(j.error)}</p>` : ''}
+    ${w ? `${!w.dictation_used ? '<p class="warn-text small" style="margin:0 0 6px">Своей причины ты не надиктовал — ответ построен на совпадении их задачи с твоим опытом. Проверь: это правда твоя причина?</p>' : ''}
+      ${stale ? '<p class="warn-text small" style="margin:0 0 6px">Разбор компании обновился — собери ответ заново.</p>' : ''}
+      ${(w.theses_ru || []).length ? `<ol class="tight small why-theses">${w.theses_ru.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : ''}
+      ${whyVariant(w, 'short', 'Коротко')}${whyVariant(w, 'long', 'Развёрнуто')}
+      ${(w.trace || []).length ? `<details class="more"><summary>На чём держится</summary><ul class="tight small">${w.trace.filter((x) => x.variant === 'long').map((x) => `<li><span class="chip ${x.tag === 'company' ? 'info' : x.tag === 'fact' ? 'good' : ''}">${esc({ company: 'компания', fact: 'мой факт', motivation: 'моя причина', link: 'связка' }[x.tag] || x.tag)}</span> ${esc(x.text)}
+          ${x.url ? ` <a href="${esc(x.url)}" target="_blank" rel="noopener">источник</a>` : ''}${x.card && x.card !== 'cv' ? ` <a href="#/cases/card/${enc(x.card)}">${esc(x.card)}</a>` : x.card ? ' <span class="muted">CV</span>' : ''}</li>`).join('')}</ul></details>` : ''}
+      ${w.edited ? '<p class="muted small" style="margin:4px 0">поправлено руками</p>' : ''}` : ''}
+    <label class="small" for="whyDict" style="display:block;margin-top:8px">Почему тебе интересна эта компания — 1–2 фразы своими словами (необязательно, но тогда ответ будет твоим):</label>
+    <div class="dict"><textarea id="whyDict" rows="2" placeholder="Нажми 🎤 и скажи по-русски">${esc(d.whyUsDictation)}</textarea>
+      <button class="mic" id="whyMic" type="button" title="Надиктовать" aria-label="Надиктовать причину">🎤</button></div>
+    <div class="hint" id="whyMicHint"></div>
+    <div class="row" style="margin-top:6px;gap:8px">
+      ${busy ? '' : w ? `<button type="button" class="small" data-why="again">Другой вариант</button>
+        ${whyEdit ? '<button type="button" class="small primary" id="whySave">Сохранить правку</button><button type="button" class="link-btn inline" id="whyCancel">отмена</button>'
+          : '<button type="button" class="link-btn inline" id="whyEditBtn">править</button>'}`
+        : '<button type="button" class="small primary" data-why="run">Собрать «почему мы»</button>'}
+      <span class="hint" style="margin:0">≈ $0.003, ~15 с. Деньги и удалёнку из надиктовки в ответ не берём.</span></div></section>`;
+}
+
+function bindWhyUs(d) {
+  const ta = $('#whyDict');
+  if (ta) {
+    const save = async () => { if (ta.value !== d.whyUsDictation) { d.whyUsDictation = ta.value; try { await api(`/api/vacancies/${enc(d.name)}`, { method: 'PATCH', body: { whyUsDictation: ta.value } }); } catch {} } };
+    ta.addEventListener('blur', save);
+    setupMic(ta, () => {}, { btn: $('#whyMic'), hint: $('#whyMicHint'), link: `${location.origin}/#/v/${enc(d.name)}` });
+    document.querySelectorAll('[data-why]').forEach((b) => b.addEventListener('click', async () => { await save(); whyEdit = false; startStep('why-us', { again: b.dataset.why === 'again' }); }));
+  }
+  $('#whyEditBtn')?.addEventListener('click', () => { whyEdit = true; loadDetail(); });
+  $('#whyCancel')?.addEventListener('click', () => { whyEdit = false; loadDetail(); });
+  $('#whySave')?.addEventListener('click', async () => {
+    try { await api(`/api/vacancies/${enc(d.name)}/why-us`, { method: 'PATCH', body: { short: $('#whyEd-short').value, long: $('#whyEd-long').value } }); }
+    catch (e) { alert(e.message); return; }
+    whyEdit = false; loadDetail();
+  });
+  if (d.jobs.whyus) attachFeed(d.jobs.whyus);
+}
+
 function companyBlock(d, mode) {
   if (!d.hasVacancy || !d.hasVacancyText) return '';
   const cr = d.companyResearch, say = cr?.say;
@@ -602,7 +657,7 @@ function companyBlock(d, mode) {
   const running = jobBusy(jc) ? 'Собираю разбор компании: сайт, блог, выступления, новости… 2–3 минуты'
     : jobBusy(js) ? 'Свожу ценности компании с твоими карточками…' : '';
   const err = !running && [jc, js].find((j) => j?.state === 'error');
-  const btn = !cr ? `<button type="button" class="small ${mode === 'letter' ? '' : 'primary'}" data-company="run">Разобрать компанию</button>
+  const btn = !cr ? `<button type="button" class="small ${mode === 'letter' ? '' : 'primary'}" data-company="run">Разобрать компанию и собрать «почему мы»</button>
       <span class="hint" style="margin:0">Агент с поиском, ≈ $0.3–0.6, 2–3 мин. Разбор хранится ${d.companyDays || 30} дней и годится для всех вакансий компании.</span>`
     : !say || cr.stale ? `<button type="button" class="small primary" data-company="run">Свести с моим опытом</button>
       <span class="hint" style="margin:0">Разбор компании уже есть${cr.research.ageDays ? ` (${cr.research.ageDays} дн.)` : ''} — подобрать твои истории, ≈ $0.003.</span>`
@@ -615,16 +670,20 @@ function companyBlock(d, mode) {
       ${mode === 'letter' && !cr ? '<p class="muted small" style="margin:0 0 6px">Что компания ценит и какими словами — чтобы письмо и отклик звучали на её языке.</p>' : ''}${head}</section>`;
   }
   const r = cr.research;
+  // Интерактивный «почему мы» — в «Собеседовании», если оно открыто, иначе в блоке письма
+  const whyFull = mode === 'interview' || !(interviewVisible(d) || jobBusy(d.jobs.interview));
   const vocab = r.vocabulary.length ? `<div class="row co-vocab">${r.vocabulary.map((w) => `<span class="chip">${esc(w)}</span>`).join('')}</div>` : '';
   if (mode === 'letter') {
     return `<section class="iv-sec co-sec"><h3 class="st-h">Компания: ${esc(r.company)} — что они ценят</h3>
+      ${whyFull ? '' : whyUsSection(d, false)}
       <ul class="tight co-must">${companyMust(cr, say)}</ul>
       <p class="muted small" style="margin:6px 0 2px">Их слова (одно-два в письме и отклике — там, где ложатся на твой факт):</p>${vocab}
       <p class="muted small" style="margin:6px 0">Учитывается в структуре письма, сгенерированном письме и сообщении к отклику. Шпаргалка — в блоке «Собеседование».</p>
+      ${whyFull ? whyUsSection(d, true) : ''}
       ${head}</section>`;
   }
   return `<section class="iv-sec co-sec"><h3 class="st-h">Компания: ${esc(r.company)} — шпаргалка перед звонком</h3>
-    ${say.why_company ? `<p class="small" style="margin:0 0 8px"><strong>Почему эта компания:</strong> ${esc(say.why_company)}</p>` : ''}
+    ${whyUsSection(d, true)}
     <h4>Обязательно упомянуть</h4><ul class="tight co-must">${companyMust(cr, say)}</ul>
     <h4>Их слова</h4>${vocab}
     ${r.avoid.length ? `<h4>Не говорить</h4><ul class="tight small">${r.avoid.map((a) => `<li>${esc(a.what)}${a.why ? ` <span class="muted">— ${esc(a.why)}</span>` : ''}</li>`).join('')}</ul>` : ''}
@@ -641,6 +700,7 @@ function bindCompany(d) {
     startStep('company', { refresh });
   }));
   for (const k of ['company', 'companysay']) if (d.jobs[k]) attachFeed(d.jobs[k]);
+  bindWhyUs(d);
 }
 
 // V1 · короткое сообщение к отклику (docs/specs/30-apply-message.md)
@@ -1445,7 +1505,7 @@ function interviewBlock(d) {
       <div class="row" style="margin-top:10px"><button type="button" class="primary small" id="ivPrep">Подготовиться</button>
       <span class="hint" style="margin:0">«О себе», 5 историй из карточек, рискованные вопросы. Агент, ≈ $0.5–1.</span></div></details>`;
   }
-  const qs = P ? [['__about', 'Расскажите о себе'], ...P.risky.map((r) => [r.q, r.q])] : [];
+  const qs = P ? [['__about', 'Расскажите о себе'], ...(d.whyUs ? [[whyQuestion(d), whyQuestion(d)]] : []), ...P.risky.map((r) => [r.q, r.q])] : [];
   if (!practiceQ && qs.length) practiceQ = qs[0][1];
   const last = log.slice().reverse().find((r) => r.question === practiceQ);
   const attempts = log.filter((r) => r.question === practiceQ);
@@ -1488,6 +1548,7 @@ function interviewBlock(d) {
       ${pbusy ? `<div class="running small"><span class="spin"></span>Интервьюер слушает…</div>` : pjob?.state === 'error' ? `<p class="error">${esc(pjob.error)}</p>` : ''}
       ${last ? `<div class="attempt"><div class="row" style="gap:8px"><strong>Попытка ${attempts.length}: ${last.score}/4</strong>
           ${['example', 'own_role', 'decision', 'result'].map((k) => `<span class="chip ${last.criteria?.[k] ? 'good' : 'bad'}">${{ example: 'пример', own_role: 'моя роль', decision: 'решение', result: 'результат' }[k]}</span>`).join('')}</div>
+        ${last.why ? `<div class="row small" style="gap:6px;margin-top:6px"><span class="muted">Почему мы:</span><span class="chip ${last.why.company ? 'good' : 'bad'}">конкретика о компании</span><span class="chip ${last.why.fact ? 'good' : 'bad'}">мой факт</span></div>` : ''}
         ${last.culture ? `<div class="row small" style="gap:6px;margin-top:6px"><span class="muted">Ценности компании:</span>${(last.culture.said || []).map((v) => `<span class="chip good">${esc(v)}</span>`).join('')}${(last.culture.missed || []).map((v) => `<span class="chip bad" title="не прозвучало">${esc(v)}</span>`).join('')}</div>` : ''}
         ${(last.missing || []).length ? `<p class="small" style="margin:6px 0 2px">Не хватило:</p><ul class="tight small">${last.missing.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
         ${(last.followups || []).map((f) => `<div class="row small" style="gap:6px;margin-top:4px"><span>↳ ${esc(f)}</span><button type="button" class="link-btn inline" data-follow="${esc(f)}">ответить на уточнение</button></div>`).join('')}
@@ -2040,7 +2101,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
