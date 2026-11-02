@@ -349,7 +349,7 @@ ${byType.map(([t, xs]) => `## ${ASSET_TYPES[t]}\n${xs.map((x) => `- **${x.id}** 
 }
 function normAsset(x, from) {
   const clip = (s, n) => String(s || '').trim().slice(0, n);
-  return { title: clip(x.title, 120), type: ASSET_TYPES[x.type] ? x.type : 'template', path: clip(x.path, 300).replace(/^\.?\/*(work\/)?/, ''),
+  return { title: clip(x.title, 120), type: ASSET_TYPES[x.type] ? x.type : 'template', path: clip(x.path, 300).replace(/^(\.\/)?\/*(work\/)?/, ''),
     from, what: clip(x.what, 500), inputs: clip(x.inputs, 300), adapt: clip(x.adapt, 500) };
 }
 function assetExists(a) {
