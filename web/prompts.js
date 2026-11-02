@@ -668,5 +668,57 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
 Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
 }
 
-module.exports = { interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// C14: разбор прошлого тестового — агент читает рабочую папку по скилу test-debrief
+function testDebrief({ slug, meta, files }) {
+  return `${BACKGROUND}
+
+Задача: скил test-debrief (\`.claude/skills/test-debrief/SKILL.md\`) для тестового \`test-tasks/${slug}/\`.
+- Задание: \`test-tasks/${slug}/task.md\`; рабочая папка: \`test-tasks/${slug}/work/\` (${files} файлов). Читай только внутри \`test-tasks/${slug}/\`.
+- Что известно: компания «${meta.company || '—'}», роль «${meta.role || '—'}», результат: ${meta.result || 'pending'}${meta.feedback ? `, фидбек компании: «${meta.feedback}»` : ''}${meta.hours ? `, часов: ${meta.hours}` : ''}.
+- Плейбук (не дублируй то, что в нём уже есть): \`test-tasks/PLAYBOOK.md\`; библиотека: \`test-tasks/LIBRARY.md\`.
+
+Результат — строго \`test-tasks/${slug}/debrief.md\` и \`test-tasks/${slug}/debrief.json\` по схеме скила. Ничего другого не меняй.`;
+}
+
+// C14: план нового тестового — один ход, весь контекст кладёт сервер
+const TEST_PLAN_SYSTEM = 'Ты опытный наставник кандидата на роль продуктового и бизнес-лидера. Составляешь план выполнения тестового задания по этапам с опорой на его прошлые тестовые. Решения по сути задания оставляешь кандидату. Ничего не выдумываешь о компании и о библиотеке сверх данных. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function testPlan({ meta, task, brief, fit, playbook, library, similar, types, prev, error }) {
+  const b = fit?.buckets || {};
+  return `Тестовое задание: ${meta.role || '—'}${meta.company ? ` в компании ${meta.company}` : ''}.${meta.due ? ` Срок сдачи: ${meta.due}.` : ''}${meta.budgetHours ? ` Кандидат готов потратить: ${meta.budgetHours} ч.` : ''}
+
+## Текст задания
+${task}
+
+## Файлы задания
+${brief.length ? brief.map((f) => `### ${f.name}${f.truncated ? ` (обрезано, всего ${f.chars} символов)` : ''}\n${f.text || '(текст не извлечён)'}`).join('\n\n') : '—'}
+
+## Вакансия (из разбора)
+${fit ? `Что болит: ${fit.pain || '—'}\nСитуация: ${fit.situation || '—'}\nМинимум: ${(b.minimum || []).join('; ') || '—'}\nЧто делать в роли: ${fit.what_you_do || '—'}` : 'разбора вакансии нет'}
+
+## Плейбук кандидата — как он делает тестовые
+${playbook}
+
+## Библиотека готовых кусков (в "assets" — только эти id)
+${library || 'пусто'}
+
+## Похожие прошлые тестовые (разборы)
+${similar.length ? similar.map((s) => `### ${s.slug} · ${s.type || ''} · результат: ${s.result}\n${s.debrief}`).join('\n\n') : 'похожих нет — опирайся на плейбук и поставь "new_type": true'}
+
+## Что сделать
+1. Пойми, что на самом деле оценивают (ход мысли, приоритизация, деньги, исполнение…) и что сдавать: формат, объём, срок, критерии — только из текста задания.
+2. Разбей работу на 4–8 этапов. У этапа: цель, конкретный результат (файл, таблица, раздел ответа), часы, что решает кандидат ("me"),
+   что делает агент ("agent"), id кусков библиотеки, которые брать ("assets"), и проверка в конце этапа ("checkpoint").
+   Первый этап — понять задание и данные; последний — проверка перед сдачей и подготовка защиты. Сумма часов — в бюджете задания${meta.budgetHours ? ` и не больше ${meta.budgetHours} ч` : ''}.
+3. Вопросы компании до старта — только те, ответ на которые меняет выводы; не больше 3; можно ни одного.
+4. Риски и ловушки — из разборов прошлых тестовых и из самого задания (данные, формат, время).
+Пиши по-русски, коротко и конкретно. Не решай задание за кандидата: никаких готовых выводов, диагнозов и цифр.
+${error ? `\nПрошлый вариант не прошёл проверку: ${error}. Исправь.\nПрошлый вариант: ${prev}\n` : ''}
+Верни JSON: {"type": "${Object.keys(types).join('|')}", "new_type": false,
+ "understanding": {"evaluates": ["…"], "deliverables": ["…"], "format": "…", "budget_hours": 0, "deadline": "…"},
+ "stages": [{"title": "…", "goal": "…", "result": "…", "hours": 0, "me": "…", "agent": "…", "assets": ["id"], "checkpoint": "…"}],
+ "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
+}
+
+module.exports = { testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

@@ -27,6 +27,7 @@ const money = require('./money');
 const answerLib = require('./answer-lib');
 const answerFacts = require('./answer-facts');
 const hrq = require('./hrq');
+const tests = require('./test-tasks');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -53,7 +54,7 @@ const agentReady = async (req, res, next) => {
 };
 
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
-  res.status(e.message === 'bad name' ? 400 : 500).json({ error: e.message });
+  res.status(e.message === 'bad name' ? 400 : e.status || 500).json({ error: e.message });
 });
 
 function withJobs(info) {
@@ -113,6 +114,7 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.whyUsDictation = store.app(name).whyUsDictation || '';
   info.whyUsFacts = answerFactsFor(name, WHY_DICT_Q, info.whyUsDictation);
   info.hrq = hrq.read(store.outDir(name)); // W10
+  info.testTasks = tests.forVacancy(name); // C14
   info.submittedAnswers = (info.submittedAnswers || []).map((x) => ({ ...x, facts: answerFactsFor(name, x.q, x.a) }));
   info.letterPrev = letterPrev(name);
   info.applyMessage = readApplyMsg(name);
@@ -2871,6 +2873,213 @@ app.get('/api/agent/usage', wrap(async (req, res) => {
 app.put('/api/agent/budget', wrap(async (req, res) => {
   try { res.json(runs.setBudget(req.body?.monthlyUsd)); } catch (e) { res.status(400).json({ error: e.message }); }
 }));
+
+// ---------- C14 · тестовые (docs/specs/39-test-tasks.md) ----------
+
+const testJobs = new Map(); // slug → { debrief, plan } id задач
+const testJob = (slug, kind) => { const id = testJobs.get(slug)?.[kind]; const j = id && jobs.get(id); return j ? publicJob(j) : null; };
+const testBusy = (slug, kind) => ['running', 'queued'].includes(testJob(slug, kind)?.state);
+const setTestJob = (slug, kind, job) => testJobs.set(slug, { ...(testJobs.get(slug) || {}), [kind]: job.id });
+const testErr = (res, e) => res.status(e.status || 400).json({ error: e.message });
+const testSlug = (req) => tests.safeSlug(req.params.slug);
+
+app.get('/api/tests', wrap(async (req, res) => {
+  const items = tests.list().map((t) => ({ ...t, jobs: { debrief: testJob(t.slug, 'debrief'), plan: testJob(t.slug, 'plan') } }));
+  const lib = tests.library();
+  const pending = items.reduce((n, t) => {
+    const d = tests.debrief(t.slug);
+    return n + [...(d?.library || []), ...(d?.playbook || [])].filter((x) => x.state === 'new').length;
+  }, 0);
+  res.json({ items, types: tests.TYPES, assetTypes: tests.ASSET_TYPES, libraryCount: lib.items.length, pending });
+}));
+
+app.get('/api/tests/library', wrap(async (req, res) => {
+  const lib = tests.library();
+  const names = Object.fromEntries(tests.list().map((t) => [t.slug, `${t.company}${t.role ? ` — ${t.role}` : ''}`]));
+  res.json({ items: lib.items.map((x) => ({ ...x, fromName: names[x.from] || x.from })), assetTypes: tests.ASSET_TYPES,
+    active: tests.list().filter((t) => !t.imported && !t.submittedAt).map((t) => ({ slug: t.slug, name: names[t.slug] })) });
+}));
+app.patch('/api/tests/library/:id', wrap(async (req, res) => {
+  try { res.json(tests.patchAsset(req.params.id, req.body || {})); } catch (e) { testErr(res, e); }
+}));
+app.delete('/api/tests/library/:id', wrap(async (req, res) => { tests.removeAsset(req.params.id); res.json({ ok: true }); }));
+app.post('/api/tests/library/:id/copy', wrap(async (req, res) => {
+  try { res.json(tests.copyAsset(req.params.id, tests.safeSlug(req.body?.to))); } catch (e) { testErr(res, e); }
+}));
+
+app.get('/api/tests/playbook', wrap(async (req, res) => {
+  const md = tests.playbook();
+  const pending = tests.list().flatMap((t) => (tests.debrief(t.slug)?.playbook || []).filter((x) => x.state === 'new')
+    .map((x) => ({ ...x, slug: t.slug, from: `${t.company}${t.role ? ` — ${t.role}` : ''}` })));
+  res.json({ md, html: safeHtml(marked(md)), pending, sections: tests.SECTIONS });
+}));
+app.put('/api/tests/playbook', wrap(async (req, res) => {
+  if (!String(req.body?.md || '').trim()) return res.status(400).json({ error: 'пустой плейбук' });
+  tests.savePlaybook(req.body.md);
+  for (const t of tests.list()) if (!t.imported) tests.writeWorkClaude(t.slug);
+  res.json({ ok: true });
+}));
+
+app.post('/api/tests/scan', wrap(async (req, res) => {
+  try { res.json(tests.scan(req.body?.src)); } catch (e) { testErr(res, e); }
+}));
+app.post('/api/tests/import', wrap(async (req, res) => {
+  try { res.json(tests.importFolder(req.body || {})); } catch (e) { testErr(res, e); }
+}));
+app.post('/api/tests', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (b.vacancy) store.safeName(b.vacancy);
+  try { res.json({ slug: tests.create(b) }); } catch (e) { testErr(res, e); }
+}));
+
+app.get('/api/tests/:slug', wrap(async (req, res) => {
+  const slug = testSlug(req);
+  let m;
+  try { m = tests.meta(slug); } catch (e) { return testErr(res, e); }
+  const dir = tests.taskDir(slug);
+  const read = (f) => tests.readText(path.join(dir, f));
+  const debriefMd = read('debrief.md');
+  const lib = Object.fromEntries(tests.library().items.map((x) => [x.id, x]));
+  const plan = tests.plan(slug);
+  res.json({ slug, meta: m, summary: tests.summary(slug), task: read('task.md'), taskHtml: safeHtml(marked(read('task.md') || '')),
+    plan, assets: plan ? Object.fromEntries(plan.stages.flatMap((s) => s.assets).filter((id) => lib[id]).map((id) => [id, lib[id]])) : {},
+    planCheck: plan?.check || null, debrief: tests.debrief(slug), debriefHtml: debriefMd ? safeHtml(marked(debriefMd)) : '',
+    brief: tests.files(slug, 'brief'), work: tests.files(slug, 'work', 300), dir: path.relative(ROOT, dir),
+    jobs: { debrief: testJob(slug, 'debrief'), plan: testJob(slug, 'plan') }, types: tests.TYPES, assetTypes: tests.ASSET_TYPES });
+}));
+app.patch('/api/tests/:slug', wrap(async (req, res) => {
+  const slug = testSlug(req);
+  try {
+    const m = tests.update(slug, req.body || {});
+    if (req.body?.result !== undefined) tests.refreshOutcome(slug);
+    if (['due', 'company', 'role'].some((k) => req.body?.[k] !== undefined) && !m.imported) tests.writeWorkClaude(slug);
+    res.json(m);
+  } catch (e) { testErr(res, e); }
+}));
+app.patch('/api/tests/:slug/stages/:id', wrap(async (req, res) => {
+  try { res.json(tests.setStage(testSlug(req), req.params.id, req.body?.status)); } catch (e) { testErr(res, e); }
+}));
+app.delete('/api/tests/:slug', wrap(async (req, res) => {
+  const slug = testSlug(req);
+  if (tests.library().items.some((x) => x.from === slug)) return res.status(409).json({ error: 'из этого задания есть куски в библиотеке — сначала убери их' });
+  fs.rmSync(tests.taskDir(slug), { recursive: true, force: true });
+  res.json({ ok: true });
+}));
+app.post('/api/tests/:slug/files', express.raw({ type: 'application/octet-stream', limit: '30mb' }), wrap(async (req, res) => {
+  const slug = testSlug(req);
+  if (!req.body?.length) return res.status(400).json({ error: 'пустой файл' });
+  try { tests.meta(slug); res.json({ name: tests.saveBrief(slug, decodeURIComponent(String(req.headers['x-filename'] || '')), req.body) }); } catch (e) { testErr(res, e); }
+}));
+app.delete('/api/tests/:slug/files/:name', wrap(async (req, res) => {
+  const p = path.join(tests.taskDir(testSlug(req)), 'brief', path.basename(req.params.name));
+  fs.rmSync(p, { force: true });
+  res.json({ ok: true });
+}));
+app.get('/api/tests/:slug/preview', wrap(async (req, res) => {
+  try { res.json(tests.preview(testSlug(req), req.query.path)); } catch (e) { testErr(res, e); }
+}));
+app.post('/api/tests/:slug/reveal', wrap(async (req, res) => {
+  const dir = tests.taskDir(testSlug(req));
+  const sub = req.body?.sub === 'work' ? path.join(dir, 'work') : dir;
+  execFile('open', [fs.existsSync(sub) ? sub : dir]);
+  res.json({ ok: true });
+}));
+app.post('/api/tests/:slug/candidates/:kind/:id', wrap(async (req, res) => {
+  const kind = req.params.kind === 'library' ? 'library' : req.params.kind === 'playbook' ? 'playbook' : null;
+  const action = ['add', 'skip'].includes(req.body?.action) ? req.body.action : null;
+  if (!kind || !action) return res.status(400).json({ error: 'неизвестное действие' });
+  try { res.json(tests.resolveCandidate(testSlug(req), kind, req.params.id, action, req.body?.patch || {})); } catch (e) { testErr(res, e); }
+}));
+
+// Разбор: агент с чтением файлов, только внутри папки задания
+app.post('/api/tests/:slug/debrief', agentReady, wrap(async (req, res) => {
+  const slug = testSlug(req);
+  if (testBusy(slug, 'debrief')) return res.status(409).json({ error: 'разбор уже идёт' });
+  const m = tests.meta(slug);
+  const dir = tests.taskDir(slug);
+  const n = tests.files(slug, 'work', 5000).length;
+  if (!n) return res.status(400).json({ error: 'рабочая папка пуста — разбирать нечего' });
+  for (const f of ['debrief.md', 'debrief.json']) if (fs.existsSync(path.join(dir, f))) fs.renameSync(path.join(dir, f), path.join(dir, `${f}.prev`));
+  const job = runJob({ kind: 'testdebrief', target: slug, prompt: prompts.testDebrief({ slug, meta: m, files: n }),
+    logFile: path.join(dir, 'debrief.log'),
+    onDone: async (j) => {
+      const d = tests.acceptDebrief(slug);
+      j.found = d.library.length + d.playbook.length;
+      for (const f of ['debrief.md.prev', 'debrief.json.prev']) fs.rmSync(path.join(dir, f), { force: true });
+    } });
+  job.label = `${m.company}${m.role ? ` — ${m.role}` : ''}`;
+  setTestJob(slug, 'debrief', job);
+  // Упал — вернуть прошлый разбор
+  const restore = setInterval(() => {
+    if (!['done', 'error'].includes(job.state)) return;
+    clearInterval(restore);
+    if (job.state === 'error') for (const f of ['debrief.md', 'debrief.json']) {
+      const prev = path.join(dir, `${f}.prev`);
+      if (fs.existsSync(prev)) fs.renameSync(prev, path.join(dir, f));
+    }
+  }, 2000);
+  res.json({ jobId: job.id });
+}));
+
+// План: один ход, контекст кладёт сервер
+function briefText(slug) {
+  return new Promise((resolve) => execFile(path.join(ROOT, '.venv', 'bin', 'python'),
+    [path.join(ROOT, 'scorer', 'task_text.py'), '--dir', path.join(tests.taskDir(slug), 'brief'), '--max', '6000', '--json'],
+    { cwd: path.join(ROOT, 'scorer'), timeout: 60000, maxBuffer: 20 * 1024 * 1024 },
+    (err, stdout) => { try { resolve(JSON.parse(stdout).files); } catch { resolve([]); } }));
+}
+async function runTestPlan(slug, { prev = '', error = '', retry = false } = {}) {
+  const m = tests.meta(slug);
+  const dir = tests.taskDir(slug);
+  const sim = tests.similar(slug).map((s) => ({ ...s, debrief: tests.readText(path.join(tests.taskDir(s.slug), 'debrief.md')).slice(0, 7000) }));
+  const fit = m.vacancy ? store.app(m.vacancy)?.fit || null : null;
+  const job = runJob({ kind: 'testplan', target: slug, system: prompts.TEST_PLAN_SYSTEM,
+    prompt: prompts.testPlan({ meta: m, task: tests.readText(path.join(dir, 'task.md')), brief: await briefText(slug), fit, playbook: tests.playbook(),
+      library: tests.readText(path.join(tests.DIR, 'LIBRARY.md')), similar: sim, types: tests.TYPES, prev, error }),
+    logFile: path.join(dir, 'plan.log'),
+    onDone: async (j) => {
+      const p = tests.normPlan(oneJSON(j.finalText));
+      if (!p.stages.length) throw new Error('модель не вернула этапов');
+      const c = tests.checkPlan(p, m.budgetHours);
+      if (!c.pass && !retry) {
+        const next = await runTestPlan(slug, { prev: JSON.stringify({ stages: p.stages.map((s) => [s.title, s.hours, s.assets]), questions: p.questions.length }), error: c.issues.join('; '), retry: true });
+        setTestJob(slug, 'plan', next);
+        return;
+      }
+      // Несуществующие куски выбрасываются, чтобы план не ссылался в пустоту
+      const ids = new Set(tests.library().items.map((x) => x.id));
+      for (const s of p.stages) s.assets = s.assets.filter((id) => ids.has(id));
+      tests.savePlan(slug, { ...p, at: new Date().toISOString(), model: j.actualModel || j.model, check: c, similar: sim.map((s) => s.slug) });
+    } });
+  job.label = `${m.company}${m.role ? ` — ${m.role}` : ''}`;
+  setTestJob(slug, 'plan', job);
+  return job;
+}
+app.post('/api/tests/:slug/plan', agentReady, wrap(async (req, res) => {
+  const slug = testSlug(req);
+  if (testBusy(slug, 'plan')) return res.status(409).json({ error: 'план уже составляется' });
+  if (!tests.readText(path.join(tests.taskDir(slug), 'task.md')).trim()) return res.status(400).json({ error: 'нет текста задания' });
+  const job = await runTestPlan(slug);
+  res.json({ jobId: job.id });
+}));
+
+// Срок сдачи: напомнить за день и в день сдачи (одно уведомление на срок)
+function testDueNotify() {
+  const day = (d) => new Date(`${d}T00:00:00`).getTime();
+  const today = day(new Date().toISOString().slice(0, 10));
+  for (const t of tests.list()) {
+    if (!t.due || t.submittedAt || t.imported) continue;
+    const left = Math.round((day(t.due) - today) / 864e5);
+    if (left < 0 || left > 1) continue;
+    const m = tests.meta(t.slug);
+    if (m.notifiedDue === t.due) continue;
+    fs.writeFileSync(path.join(tests.taskDir(t.slug), 'meta.json'), `${JSON.stringify({ ...m, notifiedDue: t.due }, null, 2)}\n`);
+    events.add({ type: 'test_due', title: left ? 'Тестовое: срок завтра' : 'Тестовое: срок сегодня',
+      text: `${t.company}${t.role ? ` — ${t.role}` : ''} · этапов готово ${t.progress.done} из ${t.progress.total}`, link: `#/tests/t/${t.slug}` });
+  }
+}
+setTimeout(testDueNotify, 10000);
+setInterval(testDueNotify, 60 * 60 * 1000);
 
 // ---------- задачи агента ----------
 

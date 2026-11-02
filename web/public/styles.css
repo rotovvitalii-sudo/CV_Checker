@@ -835,3 +835,17 @@ ul.bucket li.miss { color: var(--muted); }
 .why-var { margin: 8px 0; }
 .why-text { margin: 4px 0; line-height: 1.5; }
 .why-theses { margin: 4px 0 8px; }
+
+/* C14 · тестовые */
+a.test-row { display: block; color: inherit; text-decoration: none; }
+a.test-row:hover { border-color: var(--accent); }
+.test-tree { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.test-tree label { flex-wrap: wrap; }
+.test-files { max-height: 320px; overflow: auto; }
+.test-stages { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.test-stage { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.test-stage.doing { border-color: var(--warn); background: var(--warn-bg); }
+.test-stage.done { opacity: .75; }
+.test-stage.done strong { text-decoration: line-through; text-decoration-color: var(--muted); }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.test-stage select { width: auto; flex: 0 0 auto; }

@@ -120,6 +120,22 @@ def api(base):
     ok(code == 404, f"неизвестный разбор ответа → {code}")
     code, _, _ = get(base, "/api/topics/..%2Fetc")
     ok(code in (400, 404), f"тема с плохим slug → {code}")
+    # C14: тестовые — каждое задание читается, куски библиотеки указывают на существующие файлы, плохой slug → 400
+    tt = json.loads(get(base, "/api/tests")[2])
+    for t in tt["items"]:
+        code, _, body = get(base, f"/api/tests/{q(t['slug'])}")
+        if ok(code == 200, f"тестовое {t['slug']} → {code}"):
+            td = json.loads(body)
+            for s in ((td.get("plan") or {}).get("stages") or []):
+                ok(s.get("status") in ("todo", "doing", "done") and s.get("title"), f"тестовое {t['slug']}: плохой этап плана")
+    lib = json.loads(get(base, "/api/tests/library")[2])
+    for x in lib["items"]:
+        ok((ROOT / "test-tasks" / x["from"] / "work" / x["path"]).exists(), f"библиотека {x['id']}: нет файла {x['from']}/work/{x['path']}")
+    ok(get(base, "/api/tests/playbook")[0] == 200, "плейбук тестовых не читается")
+    code, _, _ = get(base, "/api/tests/..%2Fetc")
+    ok(code in (400, 404), f"тестовое с плохим slug → {code}")
+    code, _, _ = get(base, "/api/tests/nope-nope")
+    ok(code == 404, f"неизвестное тестовое → {code}")
     items = json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:

@@ -30,6 +30,7 @@
 | C11 | [Заполнение формы заявки (Playwright)](22-autofill-application.md) | Should | S4, C6, C9, C10, M1 | ~2–3 д | ✅ сделано (P0 + P1) |
 | C12 | [База инсайтов](34-insights-base.md) | Should | C9, W5, W8, S4 | ~1–1,5 д | ✅ готово (P0 + P1 кроме «разбить») |
 | C13 | [Ответы → база кейсов](37-answers-to-cases.md) | Should | C9, W5, C6, W9a, C8 | ~1 д | ✅ готово (P0) |
+| C14 | [Тестовые: библиотека и план с агентом](39-test-tasks.md) | Should | W5, W6, C9, C3 | ~2 д | ✅ готово (P0) |
 | W1 | [Порог покрытия 60–70% и «верхняя треть» CV](23-coverage-top-third.md) | Must | tailor-cv | ~0,5 д | ✅ сделано (P0 + P1) |
 | W2 | [«Вакансия ещё живая?» до адаптации](24-vacancy-alive.md) | Must | C11, S6 | ~0,5 д | ✅ сделано (P0 + P1) |
 | W3 | [Вердикт рекрутера и сводка причин](25-recruiter-verdict.md) | Should | tailor-cv, S3 | ~1 д | ✅ сделано (P0 + P1) |

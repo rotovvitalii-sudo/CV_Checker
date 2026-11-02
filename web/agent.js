@@ -34,6 +34,7 @@ const JOB_TITLES = {
   company: ['Компания разобрана', 'Разбор компании не удался'], companysay: ['Что сказать компании — готово', 'Сведение с опытом не удалось'], whyus: ['Ответ «почему мы» готов', '«Почему мы» не собрался'],
   hrq: ['Вопросы к интервьюеру готовы', 'Вопросы к интервьюеру не собрались'],
   answerfacts: ['Ответ разобран для базы кейсов', 'Разбор ответа для базы кейсов не удался'],
+  testdebrief: ['Тестовое разобрано — проверь, что добавить', 'Разбор тестового не удался'], testplan: ['План тестового готов', 'План тестового не собрался'],
 };
 function jobLink(job) {
   const t = job.vacancy || job.target;
@@ -44,6 +45,7 @@ function jobLink(job) {
   if (job.kind === 'voice') return '#/cases/letters';
   if (job.kind === 'insight') return '#/cases/insights';
   if (job.kind === 'outreach') return '#/feed';
+  if (job.kind === 'testdebrief' || job.kind === 'testplan') return `#/tests/t/${job.target}`;
   return t && !/^[0-9a-f]{8}$/.test(t) ? `#/v/${encodeURIComponent(t)}` : '#/';
 }
 
@@ -113,7 +115,7 @@ const TASKS = {
   fit: ['Оценка фита подробно (агент)', 'sonnet'], fitquick: ['Быстрый фит (один ход)', 'haiku'], applymsg: ['Сообщение к отклику (один ход)', 'haiku'],
   topics: ['Темы для интервью (один ход)', 'haiku'], lesson: ['Урок по теме (агент, поиск)', 'sonnet'], lessonvideo: ['Повторный поиск видео к уроку', 'sonnet'],
   translate: ['Перевод урока (один ход)', 'haiku'], topictest: ['Тест по теме (один ход)', 'haiku'],
-  insight: ['Разбор инсайта (один ход)', 'haiku'], company: ['Разбор компании (агент, поиск)', 'sonnet'], companysay: ['Разбор компании: что сказать (один ход)', 'haiku'], whyus: ['«Почему мы» (один ход)', 'haiku'], answerfacts: ['Факты из ответов в базу кейсов (один ход)', 'haiku'], hrq: ['Вопросы к интервьюеру (один ход)', 'opus'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
+  insight: ['Разбор инсайта (один ход)', 'haiku'], company: ['Разбор компании (агент, поиск)', 'sonnet'], companysay: ['Разбор компании: что сказать (один ход)', 'haiku'], whyus: ['«Почему мы» (один ход)', 'haiku'], answerfacts: ['Факты из ответов в базу кейсов (один ход)', 'haiku'], hrq: ['Вопросы к интервьюеру (один ход)', 'opus'], testplan: ['План тестового (один ход)', 'opus'], testdebrief: ['Разбор тестового (агент)', 'sonnet'], keywords: ['Ключевые слова вакансии', 'sonnet'], formfill: ['Ответы для формы на сайте', 'sonnet'],
   casescan: ['Поиск фактов в надиктовках', 'haiku'], edtech: ['Расширение базы компаний', 'haiku'],
   tailor: ['Адаптация CV', 'sonnet'], letter: ['Письмо из надиктовки', 'sonnet'], lettergen: ['Сгенерированное письмо', 'sonnet'],
   outline: ['Структура письма', 'sonnet'], answers: ['Ответы на вопросы формы', 'sonnet'], verdict: ['Вердикт рекрутера', 'sonnet'], outreach: ['Первое сообщение контакту', 'sonnet'], interview: ['Подготовка к собеседованию', 'sonnet'], practice: ['Тренажёр собеседования', 'sonnet'],
@@ -238,7 +240,7 @@ function start(job, once = false) {
     // C13: удачный разбор ответа уведомляет сам и только если нашлись факты
     if (!(job.kind === 'answerfacts' && !job.error)) try {
       const [okTitle, errTitle] = JOB_TITLES[job.kind] || ['Задача агента завершена', 'Задача агента упала'];
-      const who = job.vacancy || (/^[0-9a-f]{8}$/.test(job.target) ? 'новая вакансия' : job.target);
+      const who = job.vacancy || job.label || (/^[0-9a-f]{8}$/.test(job.target) ? 'новая вакансия' : job.target);
       events.add({
         type: job.error ? 'job_error' : 'job_done', title: job.error ? errTitle : okTitle,
         text: [who, job.error ? String(job.error).slice(0, 140) : ''].filter(Boolean).join(' · '), link: jobLink(job),
