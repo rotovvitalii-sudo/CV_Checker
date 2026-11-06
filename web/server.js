@@ -942,8 +942,12 @@ function topicsInfo(name) {
   const t = learning.vacancyTopics(store.outDir(name));
   if (!t) return null;
   const list = t.topics.map((x) => ({ ...x, ...learning.status(x.slug), title_en: x.title_en, title_ru: x.title_ru }));
-  return { at: t.at, cv: t.cv, list, passed: list.filter((x) => x.passed).length, total: list.length };
+  // Темы собраны до учёта вакансии и ответов (нет gen) или ответов при подаче стало больше — подсказка «пересобери»
+  const refresh = !t.gen ? 'old' : topicAnswers(name).length > (t.answers ?? 0) ? 'answers' : null;
+  return { at: t.at, cv: t.cv, list, passed: list.filter((x) => x.passed).length, total: list.length, refresh };
 }
+// Ответы при подаче как материал для тем: только развёрнутые по смыслу, без денег, сроков и виз
+const topicAnswers = (name) => (store.app(name).submittedAnswers || []).filter((x) => x.q && !answerFacts.FACTUAL_Q.test(x.q));
 const vacancyTopic = (name, slug) => learning.vacancyTopics(store.outDir(name))?.topics.find((x) => x.slug === slug) || null;
 const oneJSON = (t) => {
   const s = String(t || ''), a = s.indexOf('{'), b = s.lastIndexOf('}');
@@ -1001,6 +1005,18 @@ async function pickVideo(m) {
   return { ok: false, why: rejected.length ? rejected.map((x) => x.why).join('; ') : 'видео не найдено', rejected };
 }
 
+// Сверка с библиотекой отдельным ходом; не вышло — темы остаются новыми, просто без зачёта сданного
+function matchTopics(name, topics, dir) {
+  const library = learning.library().map((t) => ({ ...t, outline: learning.outline(t.slug) }));
+  if (!library.length) return Promise.resolve([]);
+  return new Promise((resolve) => {
+    let out = [];
+    const job = runJob({ kind: 'topicsmatch', target: name, system: prompts.TOPICS_MATCH_SYSTEM, prompt: prompts.topicsMatch({ topics, library }),
+      logFile: path.join(dir, '08-topics-match.log'), onDone: async (j) => { out = oneJSON(j.finalText).matches || []; } });
+    job.listeners.add((ev) => { if (ev.done) resolve(out); });
+  });
+}
+
 app.post('/api/vacancies/:name/topics', agentReady, wrap(async (req, res) => {
   const name = store.safeName(req.params.name);
   const a = store.app(name);
@@ -1010,14 +1026,18 @@ app.post('/api/vacancies/:name/topics', agentReady, wrap(async (req, res) => {
   const vac = readText(path.join(store.VACANCIES, `${name}.md`));
   if (!vac && !a.fit?.current_task) return res.status(400).json({ error: NO_TEXT });
   fs.mkdirSync(dir, { recursive: true });
+  const answers = topicAnswers(name);
+  const at = vac.search(/^## Текст вакансии/m);
   const job = runJob({
     kind: 'topics', target: name, system: prompts.TOPICS_SYSTEM,
-    prompt: prompts.interviewTopics({ cv: cv.text, fit: a.fit, requirements: readText(path.join(dir, '01-requirements.md')) || vac, library: learning.library() }),
+    prompt: prompts.interviewTopics({ cv: cv.text, fit: a.fit, requirements: readText(path.join(dir, '01-requirements.md')) || vac,
+      vacancy: at >= 0 ? vac.slice(at) : vac, answers, formQuestions: a.formQuestions || '' }),
     logFile: path.join(dir, '08-topics.log'),
     onDone: async (j) => {
-      const topics = learning.normTopics(oneJSON(j.finalText));
+      let topics = learning.normTopics(oneJSON(j.finalText));
       if (topics.length < 2) throw new Error(`тем слишком мало (${topics.length})`);
-      fs.writeFileSync(learning.topicsFile(dir), `${JSON.stringify({ at: new Date().toISOString(), cv: cv.cv, topics }, null, 2)}\n`);
+      topics = learning.applyMatches(topics, await matchTopics(name, topics, dir));
+      fs.writeFileSync(learning.topicsFile(dir), `${JSON.stringify({ at: new Date().toISOString(), cv: cv.cv, gen: 2, answers: answers.length, topics }, null, 2)}\n`);
     },
   });
   attach(name, 'topics', job);

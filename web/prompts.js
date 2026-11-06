@@ -512,28 +512,47 @@ ${cards.map((c) => `=== ${c.id} ===\n${c.text}`).join('\n\n') || '—'}
 // ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
 const TOPICS_SYSTEM = 'Ты помогаешь кандидату подготовиться к собеседованию: выбираешь темы для освежения знаний. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
-function interviewTopics({ cv, fit, requirements, library }) {
+function interviewTopics({ cv, fit, requirements, vacancy, answers, formQuestions }) {
   const b = fit?.buckets || {};
   const req = [...(b.minimum || []), ...(b.desired || [])].map((x) => `- ${x.req}${x.kw ? ` (${x.kw})` : ''}`).join('\n') || requirements.slice(0, 4000);
-  return `Требования вакансии (минимум и желательное):
+  return `Текст вакансии:
+"""
+${String(vacancy || '').slice(0, 7000)}
+"""
+
+Требования (минимум и желательное):
 ${req}
 ${fit?.current_task ? `\nГлавная задача роли: ${fit.current_task}` : ''}${(fit?.what_you_do || []).length ? `\nЧто делать: ${fit.what_you_do.join('; ')}` : ''}${fit?.pain ? `\nЧто болит: ${fit.pain}` : ''}
-
+${answers.length ? `\nНа что кандидат отвечал при подаче (компания уже спрашивала об этом, значит спросит и на интервью):\n${answers.map((x) => `- ${x.q}${x.a ? `\n  Ответ: ${String(x.a).slice(0, 500)}` : ''}`).join('\n')}\n` : ''}${formQuestions ? `\nВопросы формы заявки:\n${String(formQuestions).slice(0, 2000)}\n` : ''}
 CV кандидата:
 """
 ${cv.slice(0, 8000)}
 """
 
-Темы, которые уже есть в библиотеке кандидата (если тема по смыслу совпадает — верни ровно этот slug):
-${library.map((t) => `- ${t.slug}: ${t.title_en}`).join('\n') || '(пусто)'}
-
-Выбери 4–8 тем для освежения знаний перед интервью — там, где пункт CV пересекается с требованием вакансии
-(например, CV: «increased activation by 38%» + вакансия: «own activation» → тема «User activation in SaaS»).
-Тема — предметная область, о которой спросят на интервью (метрики, подходы, лексика), а не навык вообще («communication») и не компания.
-Сначала главная задача роли и минимум требований. Не дроби одну область на несколько тем.
+Выбери 4–8 тем для освежения знаний именно к этому интервью: о чём спросят на этой роли в этой компании и этой отрасли.
+- Тема — предметная область (метрики, подходы, лексика), а не навык вообще («communication») и не компания.
+- Называй тему в терминах этой вакансии и её продукта и рынка: если роль про трейдинг и первый депозит, то и тема про них, а не про подписку.
+- Опирайся на текст вакансии и вопросы при подаче. Сначала главная задача роли и минимум требований. Не дроби одну область на несколько тем.
+- Где пункт CV пересекается с требованием, укажи его в "cv_line". Требование, которого в CV нет, тоже может быть темой: тогда "cv_line" пустой.
 
 Верни JSON: {"topics": [{"slug": "kebab-case-по-английски", "title_en": "…", "title_ru": "…",
 "why": {"cv_line": "строка или пункт CV, коротко", "requirement": "требование вакансии, коротко по-русски"}, "priority": "high|medium|low"}]}`;
+}
+
+// Темы вакансии собираются без оглядки на библиотеку; сопоставление — отдельным ходом: сданное не надо учить заново
+const TOPICS_MATCH_SYSTEM = 'Ты сверяешь темы подготовки к интервью с библиотекой уже готовых уроков. Тема совпадает, только если готовый урок покрывает её по существу. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function topicsMatch({ topics, library }) {
+  return `Темы для новой вакансии:
+${topics.map((t) => `- ${t.slug}: ${t.title_en} (${t.why.requirement})`).join('\n')}
+
+Библиотека готовых уроков:
+${library.map((t) => `- ${t.slug}: ${t.title_en}${t.outline ? `\n  Разделы: ${t.outline}` : ''}`).join('\n')}
+
+Для каждой темы укажи урок из библиотеки, если он покрывает эту тему в этой же предметной области и подходит для подготовки без нового урока.
+Если совпадает только общая идея, а рынок, продукт или метрики другие (подписка и трейдинг, онбординг в SaaS и онбординг брокера), — null. Один урок — не больше чем на одну тему.
+
+Верни JSON: {"matches": [{"slug": "<тема>", "library_slug": "<урок>" или null}]}`;
 }
 
 // Фильтр видео из профиля — агенту, чтобы искал сразу подходящие; проверяет всё равно сервер
@@ -747,5 +766,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
  "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
 }
 
-module.exports = { cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

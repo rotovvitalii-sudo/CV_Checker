@@ -53,6 +53,26 @@ function status(slug, now = Date.now()) {
   };
 }
 
+// Для сопоставления тем: заголовки разделов урока точнее названия темы
+function outline(slug) {
+  return (lesson(slug, 'en').match(/^##\s+.+$/gm) || []).map((h) => h.replace(/^##\s+/, '')).slice(0, 8).join('; ');
+}
+
+// Тема вакансии → готовый урок: slug урока, формулировки и «почему» остаются от этой вакансии. Один урок — на одну тему
+function applyMatches(topics, matches) {
+  const known = new Set(library().map((t) => t.slug));
+  const mine = new Set(topics.map((t) => t.slug));
+  const used = new Set();
+  return topics.map((t) => {
+    const m = (Array.isArray(matches) ? matches : []).find((x) => x?.slug === t.slug)?.library_slug;
+    const own = known.has(t.slug);
+    if (own) { used.add(t.slug); return { ...t, reused: true }; }
+    if (!m || !known.has(m) || used.has(m) || mine.has(m)) return t;
+    used.add(m);
+    return { ...t, slug: m, reused: true };
+  });
+}
+
 function library() {
   if (!fs.existsSync(LEARN)) return [];
   return fs.readdirSync(LEARN).filter((s) => slugOk(s) && fs.existsSync(path.join(dir(s), 'meta.json')))
@@ -129,4 +149,4 @@ function grade(slug, answers) {
 }
 
 module.exports = { LEARN, PASS, QUESTIONS, slugOk, dir, meta, lesson, attempts, status, library, vacancyTopics, topicsFile,
-  normTopics, readiness, normTest, saveTest, publicTest, pastQuestions, grade, validDays, videoRules, VIDEO_RULES };
+  normTopics, applyMatches, outline, readiness, normTest, saveTest, publicTest, pastQuestions, grade, validDays, videoRules, VIDEO_RULES };

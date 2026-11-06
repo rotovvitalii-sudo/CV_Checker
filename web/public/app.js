@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового', cvlayout: 'чтение твоего CV' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', topicsmatch: 'сверка тем с библиотекой', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового', cvlayout: 'чтение твоего CV' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -1795,7 +1795,7 @@ function topicsSection(d) {
   if (!T) {
     return `<section class="iv-sec topics">${head}${busy || j?.state === 'error' ? jobBlock(j) : ''}
       ${!busy ? `<div class="row"><button type="button" class="primary small" id="tpGen">Углубиться в темы</button>
-        <span class="hint" style="margin:0">4–8 тем, где твоё CV пересекается с вакансией: урок (EN / RU), видео и тест.
+        <span class="hint" style="margin:0">4–8 тем под эту вакансию и твои ответы при подаче: урок (EN / RU), видео и тест.
         Список ≈ $0.002; урок создаётся при первом открытии темы (агент с поиском, ≈ $0.3–0.5); тест ≈ $0.003.</span></div>` : ''}</section>`;
   }
   const ready = T.passed === T.total;
@@ -1804,9 +1804,10 @@ function topicsSection(d) {
     <div class="banner ${ready ? 'good' : 'info'}" style="margin:0 0 8px"><p style="margin:0">${ready
       ? '<strong>✓ Готов к интервью:</strong> все темы сданы.'
       : `Готов к интервью — когда сданы все темы (осталось ${T.total - T.passed}). Тема сдаётся тестом от 80%; сданная засчитывается во всех вакансиях ${T.list[0]?.validDays || 90} дней.`}</p></div>
+    ${T.refresh && !busy ? `<p class="warn-text small" style="margin:0 0 8px">${T.refresh === 'old' ? 'Темы собраны без текста вакансии и твоих ответов при подаче.' : 'Появились новые ответы при подаче.'} Нажми «пересобрать темы»: сданное засчитается, если тема та же.</p>` : ''}
     <ul class="tp-list">${T.list.map((t) => `<li class="tp-row ${openTopic === t.slug ? 'open' : ''}">
       <div class="tp-main"><button type="button" class="link-btn tp-title" data-topic="${esc(t.slug)}">${esc(title(t))}</button> ${topicPill(t)}
-        ${t.priority === 'high' ? '<span class="chip">главная</span>' : ''}</div>
+        ${t.priority === 'high' ? '<span class="chip">главная</span>' : ''}${t.reused && !t.passed && t.hasLesson ? '<span class="chip info">урок уже есть</span>' : ''}</div>
       <div class="muted small">${t.why.cv_line ? `CV: ${esc(t.why.cv_line)}` : ''}${t.why.cv_line && t.why.requirement ? ' · ' : ''}${t.why.requirement ? `вакансия: ${esc(t.why.requirement)}` : ''}</div>
       ${openTopic === t.slug ? '<div id="topicPanel" class="topic-panel"><p class="muted small"><span class="spin"></span>Загружаю урок…</p></div>' : ''}
     </li>`).join('')}</ul>
@@ -2315,7 +2316,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового', cvlayout: 'Раскладка моего CV' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', topicsmatch: 'Темы: сверка с библиотекой', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового', cvlayout: 'Раскладка моего CV' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
