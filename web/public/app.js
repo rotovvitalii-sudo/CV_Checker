@@ -825,6 +825,19 @@ function tile(k, v, s, cls) {
   return `<div class="tile ${cls || ''}"><div class="k">${k}</div><div class="v">${v}</div>${s ? `<div class="s muted">${s}</div>` : ''}</div>`;
 }
 
+// Числа и роли — проверка честности, подача — только подсказка (check_evidence.py)
+function evidenceNote(e) {
+  if (!e) return '';
+  const hard = [];
+  if (e.unknown?.length) hard.push(`чисел нет в базе: ${e.unknown.map(esc).join(', ')}`);
+  if (e.rolesOk === false) hard.push('компании, должности, даты или языки отличаются от Master');
+  const soft = [];
+  if (e.duties) soft.push('больше одного буллета-обязанности в роли');
+  if (e.claims?.length) soft.push(`общие слова: ${e.claims.map(esc).join(', ')}`);
+  if (e.voice?.length) soft.push(`местоимения: ${e.voice.map(esc).join(', ')}`);
+  return `${hard.length ? `<p class="warn-text" style="margin:8px 0 0">Факты: ${hard.join(' · ')}.</p>` : ''}${soft.length ? `<p class="muted" style="margin:8px 0 0">Подача: ${soft.join(' · ')}.</p>` : ''}`;
+}
+
 function cvBody(cv) {
   const cov = cv.coverage;
   const pagesOk = cv.lengthOk;
@@ -836,6 +849,7 @@ function cvBody(cv) {
     </div>
     ${cv.topThird ? `<p class="${cv.topThird.pass ? 'muted' : 'warn-text'}" style="margin:8px 0 0">Верхняя треть (до Experience): главная задача ${cv.topThird.task ? 'видна ✓' : 'не видна ✗'} · обязательных ключей ${cv.topThird.hit} (нужно ≥ ${cv.topThird.need})${!cv.topThird.pass && cv.topThird.missingTop.length ? ` · поднять наверх: ${cv.topThird.missingTop.map((k) => esc(k.split('|')[0])).join(', ')}` : ''}</p>` : ''}
     ${cv.taglineOk === false ? `<p class="warn-text" style="margin:8px 0 0">Шапка не начинается с названия роли из вакансии «${esc(cv.expectedTitle)}» — CV собрано по старым правилам, пересобери.</p>` : ''}
+    ${evidenceNote(cv.evidence)}
     ${cv.note ? `<p>${esc(cv.note)}</p>` : ''}
     <dl class="kv">
       ${cv.mustMiss?.length ? `<dt>Не покрыто (must)</dt><dd>${cv.mustMiss.map((m) => `<span class="chip">${esc(m.split('|')[0])}</span>`).join(' ')}</dd>` : ''}

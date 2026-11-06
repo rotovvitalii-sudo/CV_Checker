@@ -163,17 +163,27 @@ function recruiterScore(name) {
   return all.length ? parseFloat(all[all.length - 1][1].replace(',', '.')) : null;
 }
 
-// Проверки CV: покрытие, верхняя треть, страницы (check_cv.py) и дрейф от Master, шапка (check_diff.py)
+// Числа, роли и подача буллетов (check_evidence.py). Сверка идёт с той версией Master, из которой собрано CV
+async function evidenceCheck(a, md) {
+  if (!exists(md)) return null;
+  const r = await py(['scorer/check_evidence.py', '--cv', md, '--base', baseFile(a), '--json']);
+  return r ? { pass: r.pass, unknown: r.numbers.unknown, rolesOk: r.roles?.pass ?? null, roles: r.roles,
+    styleOk: r.style_ok, duties: r.duties.length, claims: r.claims, voice: r.voice, metricShare: r.metric_share } : null;
+}
+
+// Проверки CV: покрытие, верхняя треть, страницы (check_cv.py), дрейф от Master, шапка (check_diff.py), факты (check_evidence.py)
 async function cvCheck(name, docx, md, { pdfDir } = {}) {
   const a = app(name);
   const kw = path.join(outDir(name), '01-keywords.json');
   const vf = path.join(VACANCIES, `${name}.md`);
   const role = exists(vf) ? frontmatter(fs.readFileSync(vf, 'utf8')).role || '' : '';
-  const [cv, diff] = await Promise.all([
+  const [cv, diff, evidence] = await Promise.all([
     py(['scorer/check_cv.py', '--docx', docx, '--keywords', kw, ...(pdfDir ? ['--pdf-dir', pdfDir] : []), '--json']),
     exists(md) ? py(['scorer/check_diff.py', '--base', baseFile(a), '--cv', md, ...(role ? ['--title', role] : []), '--json']) : null,
+    evidenceCheck(a, md),
   ]);
   return {
+    evidence,
     coverage: cv?.score ?? null,
     must: cv ? `${cv.must.hit.length}/${cv.must.hit.length + cv.must.miss.length}` : null,
     nice: cv ? `${cv.nice.hit.length}/${cv.nice.hit.length + cv.nice.miss.length}` : null,
@@ -201,7 +211,11 @@ async function cvMetrics(name, force = false) {
   const vf = path.join(VACANCIES, `${name}.md`);
   const role = exists(vf) ? frontmatter(fs.readFileSync(vf, 'utf8')).role || '' : '';
   const stamp = `${mtime(docx) + mtime(path.join(dir, 'CV.md')) + mtime(path.join(dir, '03-score.md'))}:v${a.baseVersion || 1}:t30:w1:${role}`;
-  if (!force && a.cv && a.cv.stamp === stamp) return a.cv;
+  if (!force && a.cv && a.cv.stamp === stamp) {
+    // Проверка фактов не требует рендера: старые заявки получают её без пересчёта через LibreOffice
+    if (a.cv.evidence === undefined) { a.cv.evidence = await evidenceCheck(a, path.join(dir, 'CV.md')); save(); }
+    return a.cv;
+  }
   // C15: чужой PDF рядом с CV.docx не перезаписываем — рендер для счёта страниц идёт в сторону
   const pdfDir = a.cvPdfMine ? path.join(dir, 'cv-versions', '_render') : null;
   const checks = await cvCheck(name, docx, path.join(dir, 'CV.md'), { pdfDir });

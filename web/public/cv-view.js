@@ -33,6 +33,7 @@ function cvDraftHtml(d) {
       ${cvCheckRow('Верхняя треть', b.topThird ? (b.topThird.pass ? 'ок' : 'нет') : null, a.topThird ? (a.topThird.pass ? 'ок' : 'нет') : null, !a.topThird || a.topThird.pass)}
       ${cvCheckRow('Страниц', b.pages, a.pages, a.pages == null || a.pages === 1)}
       ${cvCheckRow('Дрейф от Master', pctFine(b.change), pctFine(a.change), a.changeOk !== false)}
+      ${cvCheckRow('Факты сходятся с базой', !b.evidence ? null : b.evidence.pass ? 'да' : 'нет', !a.evidence ? null : a.evidence.pass ? 'да' : 'нет', !a.evidence || a.evidence.pass)}
       ${cvCheckRow('Шапка с названием роли', b.taglineOk == null ? null : b.taglineOk ? 'да' : 'нет', a.taglineOk == null ? null : a.taglineOk ? 'да' : 'нет', a.taglineOk !== false)}
     </tbody></table>
     <p class="muted small" style="margin:6px 0 0">Проверки только предупреждают: решение за тобой.${r.ext === '.pdf' ? ' PDF останется твоим байт в байт, DOCX соберётся нашим оформлением из текста.' : ' Твой DOCX останется как есть, PDF соберётся из него.'}</p>

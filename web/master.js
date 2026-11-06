@@ -147,6 +147,10 @@ async function validate(text) {
     else if (rendered.pages > 1) warnings.push(`По рендеру ${rendered.pages} страницы. Сохранить можно, но конвейер будет резать адаптированные CV до одной.`);
     else if (rendered.bottomFree != null && rendered.bottomFree < 12) warnings.push(`Запас снизу ${rendered.bottomFree} мм (нужно ≥ 12) — у рекрутера может уехать на вторую страницу.`);
   }
+  // Master сверяется с карточками: число, которого нет ни в одной, стоит подтвердить или добавить кейсом
+  const ev = errors.length ? null : await pyJSON(['scorer/check_evidence.py', '--cv', path.join(dir, 'base-cv.md'), '--json']);
+  if (ev?.numbers.unknown.length) warnings.push(`Чисел нет в карточках: ${ev.numbers.unknown.join(', ')}. Проверь их или добавь кейсом.`);
+  if (ev && !ev.style_ok) warnings.push(`Подача: ${[ev.duties.length ? 'больше одного буллета-обязанности в роли' : '', ev.claims.length ? `общие слова — ${ev.claims.join(', ')}` : '', ev.voice.length ? `местоимения — ${ev.voice.join(', ')}` : ''].filter(Boolean).join('; ')}.`);
   const act = activeVersion();
   const diff = act ? await diffChange(path.join(vdir(act), 'base-cv.md'), path.join(dir, 'base-cv.md')) : null;
   return { ok: !errors.length, errors, warnings, pages: rendered?.pages ?? null, bottomFree: rendered?.bottomFree ?? null,
