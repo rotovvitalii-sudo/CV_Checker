@@ -36,12 +36,14 @@ MIN_BOTTOM_FREE_MM = 12       # keep ≥ this much free at the bottom so other r
 MUST_WEIGHT, NICE_WEIGHT = 2, 1
 
 
-def render_pdf(docx_path: Path):
-    """docx → pdf via LibreOffice. Returns (pdf_path, pages, bottom_free_mm) or (None, None, None)."""
+def render_pdf(docx_path: Path, outdir: Path = None):
+    """docx → pdf via LibreOffice. Returns (pdf_path, pages, bottom_free_mm) or (None, None, None).
+    outdir: куда рендерить; по умолчанию рядом с docx (C15: чужой PDF рядом не перезаписываем)."""
     soffice = shutil.which("soffice")
     if not soffice:
         return None, None, None
-    outdir = docx_path.parent
+    outdir = outdir or docx_path.parent
+    outdir.mkdir(parents=True, exist_ok=True)
     subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(outdir), str(docx_path)],
                    capture_output=True, text=True, timeout=180)
     pdf = outdir / (docx_path.stem + ".pdf")
@@ -115,13 +117,14 @@ def main():
     ap.add_argument("--report")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-pdf", action="store_true", help="skip LibreOffice render")
+    ap.add_argument("--pdf-dir", help="render the PDF here instead of next to the .docx")
     a = ap.parse_args()
 
     paras, tables, images, headings, est_lines = extract(Path(a.docx))
     text = "\n".join(paras)
     words = len(text.split())
 
-    pdf, pages, bottom_free = (None, None, None) if a.no_pdf else render_pdf(Path(a.docx))
+    pdf, pages, bottom_free = (None, None, None) if a.no_pdf else render_pdf(Path(a.docx), Path(a.pdf_dir) if a.pdf_dir else None)
     if pages is not None:
         length_ok = pages == 1 and bottom_free >= MIN_BOTTOM_FREE_MM
         length_note = (f"{pages} page(s), {bottom_free} mm free at bottom (min {MIN_BOTTOM_FREE_MM})"

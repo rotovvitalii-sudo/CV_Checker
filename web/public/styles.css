@@ -849,3 +849,21 @@ a.test-row:hover { border-color: var(--accent); }
 .test-stage.done strong { text-decoration: line-through; text-decoration-color: var(--muted); }
 .chip.good { background: var(--good-bg); color: var(--good); }
 .test-stage select { width: auto; flex: 0 0 auto; }
+
+/* C15 · моя версия CV */
+.my-cv { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.my-cv .error:empty { display: none; }
+.cv-draft { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.cv-diff { max-height: 360px; overflow: auto; }
+.cv-sec h4 { margin: 8px 0 4px; font-size: 13px; }
+.cv-ch { margin: 0 0 6px; font-size: 13px; line-height: 1.45; }
+.cv-ch ins { background: var(--good-bg); color: var(--good); text-decoration: none; }
+.cv-ch del { background: var(--warn-bg); color: var(--warn-text); }
+.cv-checks { width: 100%; margin-top: 10px; border-collapse: collapse; }
+.cv-checks th, .cv-checks td { padding: 3px 8px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
+.cv-hist { margin-top: 8px; }
+.cv-hist li { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* C16 · своё письмо */
+.letter-mine { margin-top: 12px; }
+.letter-mine .error:empty { display: none; }

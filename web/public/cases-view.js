@@ -125,7 +125,7 @@ function cardOptions(d, selected) {
 }
 
 // C13: откуда предложение, если не из надиктовки письма
-const SUG_ORIGIN = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы' };
+const SUG_ORIGIN = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы', mycv: 'моё CV', myletter: 'моё письмо' };
 
 function casesSuggestionsHtml(d) {
   if (!d.suggestions.length) {

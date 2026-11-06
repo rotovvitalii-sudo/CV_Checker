@@ -28,6 +28,7 @@ const answerLib = require('./answer-lib');
 const answerFacts = require('./answer-facts');
 const hrq = require('./hrq');
 const tests = require('./test-tasks');
+const cvv = require('./cv-versions');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -115,8 +116,10 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.whyUsFacts = answerFactsFor(name, WHY_DICT_Q, info.whyUsDictation);
   info.hrq = hrq.read(store.outDir(name)); // W10
   info.testTasks = tests.forVacancy(name); // C14
+  Object.assign(info, cvVersionInfo(name)); // C15
   info.submittedAnswers = (info.submittedAnswers || []).map((x) => ({ ...x, facts: answerFactsFor(name, x.q, x.a) }));
   info.letterPrev = letterPrev(name);
+  info.letterMineFacts = info.letter?.mode === 'mine' ? answerFactsFor(name, MY_LETTER_Q, readText(path.join(store.outDir(name), 'Cover Letter.md')).trim()) : null; // C16
   info.applyMessage = readApplyMsg(name);
   info.hasVoice = fs.existsSync(VOICE);
   info.salaryMismatch = money.mismatch(info.submittedAnswers);
@@ -190,6 +193,7 @@ app.post('/api/vacancies/:name/sent', wrap(async (req, res) => {
   a.sent = {
     at, channel, target: String(target).trim(), note: String(note).trim(),
     cvBaseVersion: info.hasCV ? info.baseVersion : null,
+    cvVersion: info.hasCV ? cvv.current(a) : null, cvAuthor: info.hasCV ? a.cvAuthor || 'agent' : null,
     letterFile: info.letterFile || null,
     letterMode: info.letterFile ? (info.letter?.mode || 'dictated') : 'none',
     package: info.hasCV,
@@ -2103,17 +2107,23 @@ app.post('/api/vacancies/:name/tailor', agentReady, wrap(async (req, res) => {
   if (busy(a, 'tailor')) return res.status(409).json({ error: 'уже идёт' });
   if (!fs.existsSync(path.join(store.VACANCIES, `${name}.md`))) return res.status(400).json({ error: 'нет файла вакансии' });
   const baseVersion = master.activeVersion();
+  cvv.holdForTailor(name, a);
+  cvv.dropDraft(name);
   const job = runJob({
     kind: 'tailor', target: name,
-    prompt: prompts.tailor({ name, fit: store.app(name).fit, insights: vacancyInsights(name) }),
+    prompt: prompts.tailor({ name, fit: store.app(name).fit, insights: vacancyInsights(name), mine: a.cvAuthor === 'me' }),
     logFile: path.join(store.outDir(name), 'agent-tailor.log'),
     onDone: async () => {
       if (!fs.existsSync(path.join(store.outDir(name), 'CV.docx'))) throw new Error('агент закончил, но CV.docx не появился');
+      cvv.releaseTailor(name, a, true);
+      a.cvFactsKey = null;
       a.baseVersion = baseVersion;
       await store.cvMetrics(name, true);
       try { insights.markUsed(usedInsightIds(fs.readFileSync(path.join(store.outDir(name), 'report.md'), 'utf8')), name, 'cv-report'); } catch { /* отчёта нет */ }
     },
   });
+  // C15: правки кандидата не теряются — при ошибке агента файлы возвращаются
+  job.listeners.add((ev) => { if (ev.done && job.error) cvv.releaseTailor(name, a, false); });
   attach(name, 'tailor', job);
   res.json({ jobId: job.id });
 }));
@@ -2139,7 +2149,7 @@ function letterPrev(name) {
   const prev = path.join(store.outDir(name), '.letter-prev');
   if (!fs.existsSync(path.join(prev, 'Cover Letter.md'))) return null;
   let mode = 'dictated';
-  try { if (JSON.parse(fs.readFileSync(path.join(prev, 'letter-summary.json'), 'utf8')).mode === 'generated') mode = 'generated'; } catch {}
+  try { const m = JSON.parse(fs.readFileSync(path.join(prev, 'letter-summary.json'), 'utf8')).mode; if (['generated', 'mine'].includes(m)) mode = m; } catch {}
   const text = fs.readFileSync(path.join(prev, 'Cover Letter.md'), 'utf8');
   let at = null;
   try { at = fs.readFileSync(path.join(prev, 'at.txt'), 'utf8').trim(); } catch {}
@@ -2171,6 +2181,32 @@ app.post('/api/vacancies/:name/letter-revert', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// C16: своё письмо кандидата — вставил и сохранил. Текст дословно, текущее письмо становится «прежним», файлы для формы пересобираются.
+const MY_LETTER_Q = 'Моё сопроводительное письмо';
+app.post('/api/vacancies/:name/letter-mine', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (busy(a, 'letter') || busy(a, 'lettergen')) return res.status(409).json({ error: 'письмо сейчас собирается' });
+  const text = String(req.body?.text || '').replace(/\r\n/g, '\n').trim();
+  if (!text) return res.status(400).json({ error: 'вставь текст письма' });
+  const dir = store.outDir(name);
+  fs.mkdirSync(dir, { recursive: true });
+  snapshotLetter(dir);
+  commitLetterSnapshot(dir);
+  for (const f of LETTER_SET) fs.rmSync(path.join(dir, f), { force: true });
+  for (const f of fs.readdirSync(dir)) if (/^Cover Letter\.(pdf|docx)$|^\.cover-letter\.src$/.test(f)) fs.rmSync(path.join(dir, f), { force: true });
+  fs.writeFileSync(path.join(dir, 'Cover Letter.md'), `${text}\n`);
+  fs.writeFileSync(path.join(dir, 'letter-summary.json'), `${JSON.stringify({ mode: 'mine' }, null, 2)}\n`);
+  await store.letterMetrics(name, true);
+  await buildLetterFiles(name, true);
+  if (a.status === 'new') store.setStatus(a, 'ready', { note: 'своё письмо' });
+  a.updated = Date.now();
+  store.save();
+  startAnswerFacts({ vacancy: name, origin: 'myletter', question: MY_LETTER_Q, answer: text,
+    note: 'Это письмо кандидат написал сам. Факт — только про его опыт и результаты; мотивация и слова о компании — не факты.' });
+  res.json({ ok: true });
+}));
+
 app.post('/api/vacancies/:name/letter', agentReady, wrap(async (req, res) => {
   const name = store.safeName(req.params.name);
   const a = store.app(name);
@@ -2193,7 +2229,7 @@ app.post('/api/vacancies/:name/letter', agentReady, wrap(async (req, res) => {
       const summary = path.join(dir, 'letter-summary.json');
       try {
         const s = JSON.parse(fs.readFileSync(summary, 'utf8'));
-        if (s.mode === 'generated') { delete s.mode; fs.writeFileSync(summary, JSON.stringify(s, null, 2)); }
+        if (['generated', 'mine'].includes(s.mode)) { delete s.mode; fs.writeFileSync(summary, JSON.stringify(s, null, 2)); }
       } catch {}
       collectCardSuggestions(name, 'letter');
       await store.letterMetrics(name, true);
@@ -2322,27 +2358,28 @@ function collectCardSuggestions(name, origin) {
 
 // C13: развёрнутый ответ кандидата → факты, которых нет в базе, в «Предложено добавить»; история → подсказка «сделать кейсом».
 // Один ход Haiku, сразу после ответа; короткие и фактические ответы, повторы и запуски без залогиненного CLI — пропускаются
-function startAnswerFacts({ vacancy, origin, question, answer, rawFile }) {
+function startAnswerFacts({ vacancy, origin, question, answer, rawFile, note = '' }) {
   question = String(question || '').trim();
   answer = String(answer || '').trim();
-  if (!answerFacts.eligible(question, answer) || ['logged_out', 'missing'].includes(getStatus().state)) return null;
+  // C15: правки CV короче развёрнутых ответов — фильтр по словам к ним не относится
+  if ((origin !== 'mycv' && !answerFacts.eligible(question, answer)) || ['logged_out', 'missing'].includes(getStatus().state)) return null;
   const k = answerFacts.key(vacancy, question, answer);
   const prev = answerFacts.record(k);
   if (prev && prev.state !== 'error') return prev;
   const raw = rawFile || prev?.raw || answerFacts.saveRaw({ question, answer, vacancy, origin });
   const job = runJob({ kind: 'answerfacts', target: vacancy, system: prompts.ANSWER_FACTS_SYSTEM,
     prompt: prompts.answerFacts({ question, answer, origin: answerFacts.ORIGINS[origin] || origin,
-      index: readText(path.join(CARDS_DIR, 'INDEX.md')), cards: answerFacts.closest(question, answer) }),
+      index: readText(path.join(CARDS_DIR, 'INDEX.md')), cards: answerFacts.closest(question, answer), note }),
     logFile: path.join(store.DATA, 'answer-facts', `${k}.log`),
     onDone: async (j) => {
       const r = oneJSON(j.finalText);
       const c = answerFacts.check(r, answer);
       const n = cases.addSuggestions(c.facts.map((f) => ({ ...f, source: raw, vacancy, question })), origin);
       answerFacts.set(k, { state: 'done', found: c.facts.length, added: n, story: c.story, insight: !!r.insight, dropped: c.dropped, done: new Date().toISOString() });
-      if (n) events.add({ type: 'cases', title: `База кейсов: ${n} ${n === 1 ? 'новый факт' : 'новых факта(ов)'} из ответа`, text: `${question.slice(0, 80)} · ${vacancy}`, link: '#/cases/suggestions' });
+      if (n) events.add({ type: 'cases', title: `База кейсов: ${n} ${n === 1 ? 'новый факт' : 'новых факта(ов)'} из ${origin === 'mycv' ? 'твоего CV' : origin === 'myletter' ? 'твоего письма' : 'ответа'}`, text: `${question.slice(0, 80)} · ${vacancy}`, link: '#/cases/suggestions' });
     } });
   job.listeners.add((ev) => { if (ev.done && job.error) answerFacts.set(k, { state: 'error', error: String(job.error).slice(0, 200) }); });
-  return answerFacts.set(k, { state: 'running', origin, vacancy, question, answer, raw, at: new Date().toISOString(), jobId: job.id, error: null });
+  return answerFacts.set(k, { state: 'running', origin, vacancy, question, answer, note, raw, at: new Date().toISOString(), jobId: job.id, error: null });
 }
 const answerFactsFor = (vacancy, question, answer) => (answerFacts.eligible(question, answer) ? answerFacts.get(answerFacts.key(vacancy, question, answer)) : null);
 
@@ -2357,7 +2394,7 @@ app.post('/api/answer-facts/:key/retry', agentReady, wrap(async (req, res) => {
   if (!r) return res.status(404).json({ error: 'нет такого разбора' });
   if (r.state === 'running') return res.status(409).json({ error: 'уже разбирается' });
   answerFacts.set(String(req.params.key), { state: 'error' });
-  res.json(startAnswerFacts({ vacancy: r.vacancy, origin: r.origin, question: r.question, answer: r.answer, rawFile: r.raw }) ? { ok: true } : { ok: false });
+  res.json(startAnswerFacts({ vacancy: r.vacancy, origin: r.origin, question: r.question, answer: r.answer, rawFile: r.raw, note: r.note }) ? { ok: true } : { ok: false });
 }));
 
 // C9: на какие карточки опираются фит, CV и письмо
@@ -2872,6 +2909,131 @@ app.get('/api/agent/usage', wrap(async (req, res) => {
 
 app.put('/api/agent/budget', wrap(async (req, res) => {
   try { res.json(runs.setBudget(req.body?.monthlyUsd)); } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
+// ---------- C15 · моя версия CV (docs/specs/40-my-cv-version.md) ----------
+
+const CV_STALE = [['письмо', 'Cover Letter.md'], ['сообщение к отклику', '06-apply-message.json'], ['подготовка к собеседованию', '07-interview.json'],
+  ['вердикт', '03-verdict.json'], ['«почему мы»', '09-why-us.json'], ['вопросы к интервьюеру', '10-interviewer-questions.json']];
+function cvVersionInfo(name) {
+  const a = store.app(name);
+  const dir = store.outDir(name);
+  const at = a.cvAt ? Date.parse(a.cvAt) : 0;
+  const k = a.cvFactsKey;
+  return {
+    cvVersion: cvv.current(a), cvAuthor: a.cvAuthor || 'agent', cvFile: a.cvFile || null, cvAt: a.cvAt || null, cvPdfMine: !!a.cvPdfMine,
+    cvVersions: fs.existsSync(path.join(dir, 'CV.md')) ? cvv.history(name, a) : [], cvDraft: cvv.draft(name),
+    // Собрано раньше актуальной версии CV
+    cvOutdated: at ? CV_STALE.filter(([, f]) => { try { return fs.statSync(path.join(dir, f)).mtimeMs < at; } catch { return false; } }).map(([l]) => l) : [],
+    cvFacts: k ? answerFacts.get(k) : null, cvFactsText: k ? answerFacts.record(k)?.answer || '' : '',
+  };
+}
+
+const py = (args) => new Promise((resolve) => execFile(path.join(ROOT, '.venv', 'bin', 'python'), args, { cwd: ROOT, timeout: 60000, maxBuffer: 5 * 1024 * 1024 },
+  (err, stdout) => { try { resolve(JSON.parse(stdout)); } catch { resolve(null); } }));
+
+// Текст готов (CV.md в черновике): сверка слов, DOCX для проверок, сравнение с актуальной версией, проверки до и после
+async function finishCvDraft(name) {
+  const dir = cvv.draftDir(name);
+  const d = cvv.draft(name);
+  const md = path.join(dir, 'CV.md');
+  const text = readText(path.join(dir, 'text.txt'));
+  d.match = cvv.wordMatch(readText(md), text);
+  if (d.match < cvv.MIN_MATCH) return cvv.saveDraft(name, { ...d, state: 'error', error: `раскладка потеряла текст: совпало ${Math.round(d.match * 100)}% слов файла, нужно ≥ 98%` });
+  const docx = path.join(dir, 'CV.docx');
+  if (d.ext === '.docx') fs.copyFileSync(path.join(dir, 'source.docx'), docx);
+  else {
+    const r = await new Promise((resolve) => execFile('node', ['.claude/skills/tailor-cv/scripts/build_docx.js', md, docx], { cwd: ROOT, timeout: 60000 }, (err) => resolve(!err)));
+    if (!r) return cvv.saveDraft(name, { ...d, state: 'error', error: 'не удалось собрать DOCX из текста PDF' });
+  }
+  const compare = await py(['scorer/cv_compare.py', '--old', path.join(store.outDir(name), 'CV.md'), '--new', md, ...(d.ext === '.pdf' ? ['--pdf', path.join(dir, 'source.pdf')] : []), '--json']);
+  if (!compare) return cvv.saveDraft(name, { ...d, state: 'error', error: 'не удалось сравнить версии' });
+  const after = await store.cvCheck(name, docx, md);
+  if (compare.pdf_pages) after.pages = compare.pdf_pages;
+  return cvv.saveDraft(name, { ...d, state: 'ready', compare, after, before: store.app(name).cv || null, foreign: compare.similarity < cvv.FOREIGN });
+}
+
+app.post('/api/vacancies/:name/cv-upload', express.raw({ type: 'application/octet-stream', limit: '10mb' }), wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (!fs.existsSync(path.join(store.outDir(name), 'CV.md'))) return res.status(400).json({ error: 'сначала адаптируй CV' });
+  if (busy(a, 'tailor') || busy(a, 'cvlayout')) return res.status(409).json({ error: 'подожди, агент ещё работает с CV' });
+  const original = path.basename(decodeURIComponent(String(req.headers['x-filename'] || 'cv')));
+  const ext = path.extname(original).toLowerCase();
+  if (!['.pdf', '.docx'].includes(ext)) return res.status(400).json({ error: 'нужен PDF или DOCX' });
+  if (!req.body?.length) return res.status(400).json({ error: 'пустой файл' });
+  cvv.newDraft(name, original, req.body);
+  const dir = cvv.draftDir(name);
+  const src = path.join(dir, `source${ext}`);
+  const t = await py(['scorer/cv_text.py', '--file', src, '--out', path.join(dir, 'text.txt'), '--json']);
+  if (!t?.ok) { cvv.dropDraft(name); return res.status(400).json({ error: t?.error || 'не удалось прочитать файл' }); }
+  const text = readText(path.join(dir, 'text.txt'));
+  const l = cvv.layout(text);
+  if (ext === '.docx' && l.structured) {
+    fs.writeFileSync(path.join(dir, 'CV.md'), l.md);
+    cvv.saveDraft(name, { ...cvv.draft(name), via: 'server' });
+    return res.json({ draft: await finishCvDraft(name) });
+  }
+  // PDF или DOCX без стилей заголовков — раскладывает модель, слово в слово
+  const ready = await ensureReady();
+  if (!ready.ok) { cvv.dropDraft(name); return res.status(409).json({ error: ready.error }); }
+  cvv.saveDraft(name, { ...cvv.draft(name), via: 'haiku' });
+  const job = runJob({ kind: 'cvlayout', target: name, system: prompts.CV_LAYOUT_SYSTEM, prompt: prompts.cvLayout({ text }),
+    logFile: path.join(dir, 'layout.log'),
+    onDone: async (j) => {
+      if (!cvv.draft(name)) return; // черновик отменили, пока шла раскладка
+      fs.writeFileSync(path.join(dir, 'CV.md'), `${String(j.finalText).replace(/^```\w*\n|\n```\s*$/g, '').trim()}\n`);
+      await finishCvDraft(name);
+    } });
+  job.listeners.add((ev) => { if (ev.done && job.error && cvv.draft(name)) cvv.saveDraft(name, { ...cvv.draft(name), state: 'error', error: String(job.error).slice(0, 200) }); });
+  attach(name, 'cvlayout', job);
+  res.json({ draft: cvv.draft(name) });
+}));
+
+app.delete('/api/vacancies/:name/cv-upload', wrap(async (req, res) => {
+  cvv.dropDraft(store.safeName(req.params.name));
+  res.json({ ok: true });
+}));
+
+app.post('/api/vacancies/:name/cv-upload/apply', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  const d = cvv.draft(name);
+  if (d?.foreign && !req.body?.force) return res.status(409).json({ error: 'файл не похож на текущее CV — подтверди, что это нужный файл', foreign: true });
+  try { cvv.apply(name, a); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  await store.cvMetrics(name, true);
+  a.cvFactsKey = null;
+  const c = d.compare;
+  if (c.edits.length) {
+    const question = `Правки в адаптированном CV (версия ${cvv.current(a)})`;
+    const answer = c.edits.join('\n');
+    const note = `Кандидат сам дописал и поправил CV под вакансию «${name}». Ниже в «ответе» — новые и изменённые строки.
+Было до правки:\n${c.was.map((x) => `- ${x}`).join('\n') || '—'}
+Факт — только то, что добавилось по сути. Перефразирование, ключевые слова без содержания и порядок строк — не факты.`;
+    startAnswerFacts({ vacancy: name, origin: 'mycv', question, answer, note });
+    a.cvFactsKey = answerFacts.key(name, question, answer);
+  }
+  store.save();
+  res.json({ ok: true, version: cvv.current(a) });
+}));
+
+app.post('/api/vacancies/:name/cv-versions/:v/restore', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const a = store.app(name);
+  if (busy(a, 'tailor')) return res.status(409).json({ error: 'подожди, идёт адаптация' });
+  try { cvv.restore(name, a, Number(req.params.v)); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  a.cvFactsKey = null;
+  await store.cvMetrics(name, true);
+  res.json({ ok: true, version: cvv.current(a) });
+}));
+
+app.get('/api/vacancies/:name/cv-versions/:v/:file', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const p = cvv.versionFile(name, Number(req.params.v), req.params.file);
+  if (!p) return res.status(404).json({ error: 'нет такого файла' });
+  const names = store.exportNames(name, store.vacancyInfo(name));
+  const base = (req.params.file === 'CV.docx' ? names.cvDocx : names.cvPdf).replace(/(\.\w+)$/, `_v${req.params.v}$1`);
+  sendNamed(req, res, p, base);
 }));
 
 // ---------- C14 · тестовые (docs/specs/39-test-tasks.md) ----------

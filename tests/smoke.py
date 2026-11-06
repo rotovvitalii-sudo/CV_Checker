@@ -167,6 +167,11 @@ def api(base):
                 its = S.get("items") or []
                 ok(all(x.get("id") and x.get("q") and x.get("status") in ("todo", "asked", "skipped", "moot") for x in its), f"вопросы интервьюеру {it['name']} / {st}: плохая запись")
                 ok(sum(1 for x in its if x.get("top")) <= 3, f"вопросы интервьюеру {it['name']} / {st}: главных больше 3")
+            # C15: история версий CV — актуальная версия первая, номера идут вниз, черновик не завис
+            vs = d.get("cvVersions") or []
+            if vs:
+                ok(vs[0].get("current") and vs[0]["version"] == d.get("cvVersion"), f"версии CV {it['name']}: первая не актуальная")
+                ok([v["version"] for v in vs] == sorted((v["version"] for v in vs), reverse=True), f"версии CV {it['name']}: порядок")
             m = d.get("applyMessage")
             if m:
                 ok(bool(m.get("message")) and "check" in m, f"сообщение к отклику {it['name']}: нет текста или проверки")

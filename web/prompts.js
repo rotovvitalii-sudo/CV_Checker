@@ -127,10 +127,11 @@ function cultureBlock(c, use) {
 ${use}\n`;
 }
 
-function tailor({ name, fit, insights }) {
+function tailor({ name, fit, insights, mine }) {
   return `${BACKGROUND}
 ${painBlock(fit, 'Верхняя треть CV отвечает на эту боль, минимум — в первых строках (только фактами из базы).')}${insightsBlock(insights, 'В CV.md инсайты НЕ попадают. Только в report.md, раздел пробелов: если по пробелу есть инсайт — «по пробелу X есть инсайт insight:<id>: тему знаешь, кейса нет — надиктуй, если делал».')}
-Задача: выполни скил tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`) целиком для \`vacancies/${name}.md\`.
+${mine ? `Актуальное \`output/${name}/CV.md\` — версия кандидата, которую он правил сам. Основа новой адаптации — она, а не base-cv.md: сохрани его правки и формулировки,
+факты из неё для этой вакансии считай разрешёнными, даже если их нет в базе. Дрейф по-прежнему считается от Master CV.\n\n` : ''}Задача: выполни скил tailor-cv (\`.claude/skills/tailor-cv/SKILL.md\`) целиком для \`vacancies/${name}.md\`.
 Если \`output/${name}/01-keywords.json\` содержит \`"source": "quick"\` (черновик быстрого фита) — шаг 1 сделай заново.
 Если \`output/${name}/01-requirements.md\` и \`01-keywords.json\` уже существуют — шаг 1 не переделывай,
 используй их (по этим ключам считается матч вакансии с Master CV, он не должен скакать).
@@ -479,10 +480,10 @@ ${replace ? `\nЗамени ОДИН вопрос — дай другой воп
 // ---------- C13 · ответы → база кейсов (docs/specs/37-answers-to-cases.md) ----------
 const ANSWER_FACTS_SYSTEM = 'Ты сверяешь ответ кандидата с его базой кейсов и выписываешь только то, что он сам сказал и чего в базе нет. Ничего не додумываешь. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
-function answerFacts({ question, answer, origin, index, cards }) {
+function answerFacts({ question, answer, origin, index, cards, note }) {
   return `Где кандидат отвечал: ${origin}.
 Вопрос: ${question}
-Ответ кандидата (дословно, возможны ошибки распознавания речи):
+${note ? `${note}\n` : ''}Ответ кандидата (дословно, возможны ошибки распознавания речи):
 """
 ${String(answer).slice(0, 6000)}
 """
@@ -668,6 +669,32 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
 Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
 }
 
+// C15: PDF или DOCX без стилей → формат CV.md, слово в слово
+const CV_LAYOUT_SYSTEM = 'Ты раскладываешь текст CV в markdown. Не меняешь, не переводишь, не добавляешь и не убираешь ни одного слова. Возвращаешь только markdown, без пояснений и без ограждений кода.';
+
+function cvLayout({ text }) {
+  return `Разложи текст CV в формат:
+# ИМЯ
+Строка позиционирования
+Контакты
+
+## Раздел (Career Profile, Career Highlights, Experience, Education, Languages и т.п.)
+Текст раздела
+- Буллет
+
+### Компания — Должность
+Даты · формат работы
+_Описание компании курсивом_
+- Буллет
+
+Весь текст — дословно, в исходном порядке. Переносы строк внутри абзаца и буллета склей. Символы буллетов замени на «- ».
+
+Текст CV:
+"""
+${String(text).slice(0, 12000)}
+"""`;
+}
+
 // C14: разбор прошлого тестового — агент читает рабочую папку по скилу test-debrief
 function testDebrief({ slug, meta, files }) {
   return `${BACKGROUND}
@@ -720,5 +747,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
  "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
 }
 
-module.exports = { testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

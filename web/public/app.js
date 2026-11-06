@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового', cvlayout: 'чтение твоего CV' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -519,6 +519,7 @@ function renderDetail() {
       ${d.hasCV && d.cv ? cvBody(d.cv) : ''}
       ${verdictBlock(d)}
       ${d.hasCV ? exportNameRow(d) : ''}
+      ${d.hasCV ? myCvBlock(d) : ''}
       ${!tailorBusy ? `<div class="row" style="margin-top:${d.hasCV ? 12 : 0}px">
         <button id="tailorBtn" class="${d.hasCV ? '' : 'primary'}" ${d.hasVacancy && d.hasVacancyText ? '' : 'disabled'}>${d.hasCV ? 'Пересобрать CV' : 'Адаптировать CV'}</button>
         <span class="hint" style="margin:0">${d.hasVacancyText ? 'Агент tailor-cv: требования → карточки → CV.docx → чекер. Обычно 5–15 минут.' : 'Сначала вставь текст вакансии в блоке «Матч».'}</span></div>` : ''}
@@ -539,10 +540,19 @@ function renderDetail() {
       <div class="row" style="margin-top:10px">
         <button id="letterBtn" class="${d.letterText ? '' : 'primary'}" ${!d.hasCV || letterBusy ? 'disabled' : ''}>${d.letterText ? 'Пересобрать из надиктовки' : 'Сделать письмо из надиктовки'}</button>
         <button id="letterGenBtn" ${!d.hasCV || letterBusy ? 'disabled' : ''} title="Без надиктовки: факты из базы со ссылками, голос — по твоим прошлым надиктовкам">${d.letter?.mode === 'generated' ? 'Сгенерировать заново' : 'Сгенерировать письмо'}</button>
+        <button type="button" id="letterMineBtn" ${letterBusy ? 'disabled' : ''}>${d.letter?.mode === 'mine' ? 'Изменить своё письмо' : 'Вставить своё письмо'}</button>
         <span class="hint" style="margin:0" id="dictCount"></span>
         ${d.hasCV ? `<span class="hint" style="margin:0">Сгенерировать — агент пишет сам по структуре и кейсам, ≈ $0.8–2, 1–6 минут.
           Голос — ${d.hasVoice ? 'по <a href="#/cases/letters">голосовому профилю</a>' : 'по всем надиктовкам (<a href="#/cases/letters">собери голосовой профиль</a> — будет дешевле)'}.</span>` : ''}
         ${!d.hasCV ? '<span class="hint" style="margin:0">Сначала адаптируй CV.</span>' : ''}
+      </div>
+      <div class="letter-mine hidden" id="letterMine">
+        <label class="sr-only" for="letterMineText">Текст письма</label>
+        <textarea id="letterMineText" rows="12" placeholder="Вставь письмо, которое написал сам">${d.letter?.mode === 'mine' ? esc(d.letterText.trim()) : ''}</textarea>
+        <div class="row" style="margin-top:8px"><button type="button" class="primary small" id="letterMineSave">Сохранить</button>
+          <button type="button" class="small" id="letterMineCancel">Отмена</button>
+          <span class="hint" style="margin:0">Сохранится как есть, без проверок. Текущее письмо станет «прежним».</span></div>
+        <p class="error" id="letterMineErr"></p>
       </div>
     </div>
 
@@ -842,7 +852,7 @@ function letterCheckProblem(d) {
   const out = [];
   if (L.mode === 'generated' && L.facts && !L.facts.pass) out.push(L.facts.issues?.[0] || `факты с источником ${L.facts.ok}/${L.facts.total}`);
   if (L.mode !== 'generated' && L.shareOk === false) out.push(`твоих слов ${pct(L.share)} (нужно ≥ 80%)`);
-  if (L.humanizeOk === false) out.push(`humanizer ${L.humanize} (нужно ≤ 3)`);
+  if (L.mode !== 'mine' && L.humanizeOk === false) out.push(`humanizer ${L.humanize} (нужно ≤ 3)`);
   return out.join(', ');
 }
 
@@ -873,14 +883,15 @@ function bindLetterExport(d) {
   });
 }
 
+const LETTER_MODE = { generated: 'сгенерированное', mine: 'твоё', dictated: 'из надиктовки' };
 function letterBody(d) {
   const L = d.letter || {};
-  const gen = L.mode === 'generated';
+  const gen = L.mode === 'generated', mine = L.mode === 'mine';
   const chips = [
-    `<span class="chip ${gen ? 'info' : ''}">${gen ? 'сгенерировано' : 'из надиктовки'}</span>`,
+    `<span class="chip ${gen ? 'info' : mine ? 'good' : ''}">${gen ? 'сгенерировано' : mine ? 'твоё письмо' : 'из надиктовки'}</span>`,
     gen && L.facts ? `<span class="chip ${L.facts.pass ? 'good' : 'bad'}">факты с источником ${L.facts.ok}/${L.facts.total}</span>` : '',
-    !gen && L.share != null ? `<span class="chip ${L.shareOk ? 'good' : 'bad'}">твоих слов ${pct(L.share)}</span>` : '',
-    L.humanize != null ? `<span class="chip ${L.humanizeOk ? 'good' : 'bad'}">humanizer ${L.humanize} (≤3)</span>` : '',
+    !gen && !mine && L.share != null ? `<span class="chip ${L.shareOk ? 'good' : 'bad'}">твоих слов ${pct(L.share)}</span>` : '',
+    L.humanize != null && !mine ? `<span class="chip ${L.humanizeOk ? 'good' : 'bad'}">humanizer ${L.humanize} (≤3)</span>` : '',
     L.words ? `<span class="chip">${L.words} слов</span>` : '',
   ].join(' ');
   return `<div class="row" style="margin-bottom:8px">${chips}
@@ -898,9 +909,10 @@ function letterBody(d) {
       <span class="muted small mono">${esc(d.exportNames.letterPdf)}</span>
     </div>
     ${d.letterPdf?.pages > 1 ? `<p class="warn-text" style="margin:6px 0 0">PDF письма — ${d.letterPdf.pages} страницы. Сократи письмо до одной страницы.</p>` : ''}
+    ${mine && d.letterMineFacts ? factsLine(d.letterMineFacts, 'Моё сопроводительное письмо', d.letterText.trim()) : ''}
     ${gen && L.facts && !L.facts.pass ? `<p class="error" style="margin:0 0 8px">Не готово: ${esc(L.facts.issues.slice(0, 3).join('; '))}</p>` : ''}
     <div class="letter" id="letterText">${esc(d.letterText.trim())}</div>
-    ${d.letterPrev ? `<details class="letter-prev"><summary class="small">Прежнее письмо · ${d.letterPrev.mode === 'generated' ? 'сгенерированное' : 'из надиктовки'} · ${d.letterPrev.words} слов${d.letterPrev.at ? ` · заменено ${fmtDay(d.letterPrev.at)}` : ''}</summary>
+    ${d.letterPrev ? `<details class="letter-prev"><summary class="small">Прежнее письмо · ${LETTER_MODE[d.letterPrev.mode] || 'из надиктовки'} · ${d.letterPrev.words} слов${d.letterPrev.at ? ` · заменено ${fmtDay(d.letterPrev.at)}` : ''}</summary>
       <div class="letter muted">${esc(d.letterPrev.preview)}${d.letterPrev.preview.length >= 600 ? '…' : ''}</div>
       <button type="button" class="small" id="letterRevert">Вернуть прежнее письмо</button></details>` : ''}
     ${gen && d.letterFacts?.length ? `<details class="letter-facts"><summary>Откуда факты · ${d.letterFacts.length}</summary>
@@ -946,8 +958,20 @@ function bindDetail() {
   });
   $('#kwBtn')?.addEventListener('click', () => startStep('keywords'));
   $('#tailorBtn')?.addEventListener('click', () => {
-    if (d.hasCV && !confirm('Пересобрать CV заново? Текущие файлы в папке будут перезаписаны.')) return;
+    const msg = d.cvAuthor === 'me' ? 'Пересобрать CV? Основой станет твоя версия, агент сохранит правки. Сама версия останется в истории.'
+      : 'Пересобрать CV заново? Текущая версия останется в истории.';
+    if (d.hasCV && !confirm(msg)) return;
     startStep('tailor');
+  });
+  bindMyCv(d);
+  $('#letterMineBtn')?.addEventListener('click', () => { $('#letterMine').classList.toggle('hidden'); $('#letterMineText').focus(); });
+  $('#letterMineCancel')?.addEventListener('click', () => $('#letterMine').classList.add('hidden'));
+  $('#letterMineSave')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await api(`/api/vacancies/${enc(d.name)}/letter-mine`, { method: 'POST', body: { text: $('#letterMineText').value } }); }
+    catch (err) { $('#letterMineErr').textContent = err.message; e.target.disabled = false; return; }
+    await loadDetail();
+    loadList();
   });
   $('#letterGenBtn')?.addEventListener('click', () => {
     if (d.letterText && !confirm('Сгенерировать письмо агентом? Текущее письмо станет «прежним» — его можно будет вернуть одной кнопкой.')) return;
@@ -959,7 +983,7 @@ function bindDetail() {
   });
   $('#letterRevert')?.addEventListener('click', async (e) => {
     const p = d.letterPrev;
-    if (!confirm(`Вернуть прежнее письмо (${p.mode === 'generated' ? 'сгенерированное' : 'из надиктовки'}, ${p.words} слов)? Текущее станет «прежним» — можно будет вернуть обратно.`)) return;
+    if (!confirm(`Вернуть прежнее письмо (${LETTER_MODE[p.mode] || 'из надиктовки'}, ${p.words} слов)? Текущее станет «прежним» — можно будет вернуть обратно.`)) return;
     e.target.disabled = true;
     e.target.textContent = 'Возвращаю…';
     try { await api(`/api/vacancies/${enc(d.name)}/letter-revert`, { method: 'POST' }); } catch (err) { alert(err.message); }
@@ -2245,7 +2269,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового', cvlayout: 'Раскладка моего CV' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';
@@ -3081,7 +3105,7 @@ function statsView() {
   const foundOn = [...foundNames.map((n) => [n, sent.filter((x) => x.i.foundOn?.name === n)]),
     ['Не указано', sent.filter((x) => !x.i.foundOn)]].filter(([, l]) => l.length);
   const letterModeOf = (x) => x.i.sent.letterMode || (x.i.sent.letterFile ? 'dictated' : 'none');
-  const letterModes = [['Сгенерировано агентом', 'generated'], ['Из надиктовки', 'dictated'], ['Без письма', 'none']]
+  const letterModes = [['Сгенерировано агентом', 'generated'], ['Из надиктовки', 'dictated'], ['Моё письмо', 'mine'], ['Без письма', 'none']]
     .map(([l, k]) => [l, sent.filter((x) => letterModeOf(x) === k)]).filter(([, l]) => l.length);
   const formats = [...Object.entries(FORMAT_LABELS).map(([k, l]) => [l, sent.filter((x) => x.i.fit?.work_format === k)]),
     ['Не указан', sent.filter((x) => !FORMAT_LABELS[x.i.fit?.work_format])]].filter(([, l]) => l.length);
@@ -3151,7 +3175,7 @@ function statsView() {
         ${foundNames.length ? `<div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(foundOn)}</tbody></table></div>`
           : '<p class="muted small" style="margin:0">Появится, когда отправишь вакансию, добавленную с вкладки «Поиск вакансий → Сайты».</p>'}
       </section>
-      <section class="card"><h3 class="st-h">Письмо: сгенерировано или надиктовано</h3>
+      <section class="card"><h3 class="st-h">Письмо: сгенерировано, надиктовано или своё</h3>
         ${letterModes.length ? `<div class="table-box flat"><table class="apps">${head}<tbody>${sliceRows(letterModes)}</tbody></table></div>`
           : '<p class="muted small" style="margin:0">Появится после первой отметки отправки.</p>'}
       </section>

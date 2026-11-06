@@ -102,7 +102,7 @@ function letterFile(name) {
 function listFiles(name) {
   const dir = outDir(name);
   if (!exists(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => !f.startsWith('.')).sort();
+  return fs.readdirSync(dir).filter((f) => !f.startsWith('.') && f !== 'cv-versions').sort();
 }
 
 // ---------- фит ----------
@@ -163,26 +163,17 @@ function recruiterScore(name) {
   return all.length ? parseFloat(all[all.length - 1][1].replace(',', '.')) : null;
 }
 
-async function cvMetrics(name, force = false) {
-  const dir = outDir(name);
-  const docx = path.join(dir, 'CV.docx');
-  const kw = path.join(dir, '01-keywords.json');
-  if (!exists(docx) || !exists(kw)) return null;
+// Проверки CV: покрытие, верхняя треть, страницы (check_cv.py) и дрейф от Master, шапка (check_diff.py)
+async function cvCheck(name, docx, md, { pdfDir } = {}) {
   const a = app(name);
-  // Шапка CV начинается с точного названия роли из вакансии (tailor-cv, правило 3b)
+  const kw = path.join(outDir(name), '01-keywords.json');
   const vf = path.join(VACANCIES, `${name}.md`);
   const role = exists(vf) ? frontmatter(fs.readFileSync(vf, 'utf8')).role || '' : '';
-  const stamp = `${mtime(docx) + mtime(path.join(dir, 'CV.md')) + mtime(path.join(dir, '03-score.md'))}:v${a.baseVersion || 1}:t30:w1:${role}`;
-  if (!force && a.cv && a.cv.stamp === stamp) return a.cv;
   const [cv, diff] = await Promise.all([
-    py(['scorer/check_cv.py', '--docx', docx, '--keywords', kw, '--json']),
-    exists(path.join(dir, 'CV.md'))
-      ? py(['scorer/check_diff.py', '--base', baseFile(a), '--cv', path.join(dir, 'CV.md'), ...(role ? ['--title', role] : []), '--json'])
-      : null,
+    py(['scorer/check_cv.py', '--docx', docx, '--keywords', kw, ...(pdfDir ? ['--pdf-dir', pdfDir] : []), '--json']),
+    exists(md) ? py(['scorer/check_diff.py', '--base', baseFile(a), '--cv', md, ...(role ? ['--title', role] : []), '--json']) : null,
   ]);
-  const summary = readJSON(path.join(dir, 'summary.json')) || {};
-  a.cv = {
-    stamp,
+  return {
     coverage: cv?.score ?? null,
     must: cv ? `${cv.must.hit.length}/${cv.must.hit.length + cv.must.miss.length}` : null,
     nice: cv ? `${cv.nice.hit.length}/${cv.nice.hit.length + cv.nice.miss.length}` : null,
@@ -197,6 +188,27 @@ async function cvMetrics(name, force = false) {
     change: diff?.change ?? null,
     changeOk: diff?.pass ?? null,
     taglineOk: diff?.tagline_ok ?? null, expectedTitle: diff?.expected_title || '', tagline: diff?.tagline || '',
+  };
+}
+
+async function cvMetrics(name, force = false) {
+  const dir = outDir(name);
+  const docx = path.join(dir, 'CV.docx');
+  const kw = path.join(dir, '01-keywords.json');
+  if (!exists(docx) || !exists(kw)) return null;
+  const a = app(name);
+  // Шапка CV начинается с точного названия роли из вакансии (tailor-cv, правило 3b)
+  const vf = path.join(VACANCIES, `${name}.md`);
+  const role = exists(vf) ? frontmatter(fs.readFileSync(vf, 'utf8')).role || '' : '';
+  const stamp = `${mtime(docx) + mtime(path.join(dir, 'CV.md')) + mtime(path.join(dir, '03-score.md'))}:v${a.baseVersion || 1}:t30:w1:${role}`;
+  if (!force && a.cv && a.cv.stamp === stamp) return a.cv;
+  // C15: чужой PDF рядом с CV.docx не перезаписываем — рендер для счёта страниц идёт в сторону
+  const pdfDir = a.cvPdfMine ? path.join(dir, 'cv-versions', '_render') : null;
+  const checks = await cvCheck(name, docx, path.join(dir, 'CV.md'), { pdfDir });
+  const summary = readJSON(path.join(dir, 'summary.json')) || {};
+  a.cv = {
+    stamp,
+    ...checks,
     recruiter: summary.recruiter_score ?? recruiterScore(name),
     gaps: summary.top_gaps || [],
     note: summary.note || '',
@@ -217,7 +229,8 @@ async function letterMetrics(name, force = false) {
   if (!force && a.letter && a.letter.stamp === stamp) return a.letter;
   const summary = readJSON(summaryFile) || {};
   // C8: письмо, сгенерированное агентом, проверяется по фактам (check_generated), а не по доле надиктовки
-  const mode = summary.mode === 'generated' ? 'generated' : 'dictated';
+  // C16: своё письмо кандидата — как есть, без проверок пути надиктовки и фактов
+  const mode = ['generated', 'mine'].includes(summary.mode) ? summary.mode : 'dictated';
   const [share, hum, gen] = await Promise.all([
     mode === 'dictated' && exists(trace) ? py(['scorer/check_letter.py', '--trace', trace, '--json']) : null,
     py(['scorer/check_humanize.py', '--file', path.join(dir, lf), '--json']),
@@ -368,6 +381,7 @@ function vacancyInfo(name) {
 }
 
 module.exports = {
+  cvCheck, py,
   load, save, state, app, scan, vacancyInfo, cvMetrics, letterMetrics, safeName, outDir, pickFit,
   exportNames, masterExportName, FUNNEL, STATUSES, CHANNELS, setStatus, noReplyDays, DAY, DATA, VACANCIES, OUTPUT, get inbox() { return state.inbox; },
 };
