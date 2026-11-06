@@ -78,7 +78,7 @@ function inboxList() {
 // ---------- список и карточка ----------
 
 app.get('/api/vacancies', wrap(async (req, res) => {
-  const matches = await master.vacancyMatches();
+  const matches = await master.vacancyMatches(masterChoiceOf);
   // W4: «есть контакт» — в целевой компании есть человек со статусом «поговорили» / «рекомендовал»
   const warm = targets.warmCompanies();
   const m = money.get().money;
@@ -97,8 +97,11 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   await store.cvMetrics(name);
   await store.letterMetrics(name);
   const info = withJobs(store.vacancyInfo(name));
-  info.master = (await master.vacancyMatches())[name] || null;
+  info.master = (await master.vacancyMatches(masterChoiceOf))[name] || null;
   info.masterVersion = master.activeVersion();
+  info.masterPick = await master.pickFor(name, store.app(name).masterChoice); // C18
+  const baseP = info.hasCV ? master.profileOf(info.baseVersion) : null;
+  info.baseProfile = baseP ? { id: baseP.id, title: baseP.title, version: baseP.version } : null;
   info.cvStale = info.hasCV ? master.isStale(info.baseVersion) : false;
   info.exportNames = store.exportNames(name, info);
   info.agentUsage = runs.forTarget(name);
@@ -136,6 +139,15 @@ app.patch('/api/vacancies/:name', wrap(async (req, res) => {
     if (!store.STATUSES.includes(req.body.status)) return res.status(400).json({ error: 'bad status' });
     if (req.body.status === 'sent' && !a.sent) return res.status(400).json({ error: 'отметь отправку через диалог: нужны дата и канал' });
     store.setStatus(a, req.body.status, { at: req.body.at, note: req.body.note });
+  }
+  // C18: ручной выбор профиля Master CV; null — вернуть автовыбор
+  if (req.body.masterChoice !== undefined) {
+    if (req.body.masterChoice === null) delete a.masterChoice;
+    else {
+      const p = master.profileById(String(req.body.masterChoice));
+      if (!p || !p.version || p.archived) return res.status(400).json({ error: 'этот профиль Master CV нельзя выбрать' });
+      a.masterChoice = { profile: p.id, by: 'me', at: new Date().toISOString() };
+    }
   }
   if (typeof req.body.dictation === 'string') a.dictation = req.body.dictation;
   if (typeof req.body.formQuestions === 'string') a.formQuestions = req.body.formQuestions.slice(0, 8000);
@@ -193,6 +205,7 @@ app.post('/api/vacancies/:name/sent', wrap(async (req, res) => {
   a.sent = {
     at, channel, target: String(target).trim(), note: String(note).trim(),
     cvBaseVersion: info.hasCV ? info.baseVersion : null,
+    cvProfile: info.hasCV ? master.profileOf(info.baseVersion)?.id || null : null,
     cvVersion: info.hasCV ? cvv.current(a) : null, cvAuthor: info.hasCV ? a.cvAuthor || 'agent' : null,
     letterFile: info.letterFile || null,
     letterMode: info.letterFile ? (info.letter?.mode || 'dictated') : 'none',
@@ -1803,7 +1816,7 @@ let caseScanJob = null;
 
 // Сводка пробелов (P1): ключевые требования вакансий, которых нет в Master CV, — по частоте
 async function gapSummary() {
-  const matches = await master.vacancyMatches();
+  const matches = await master.vacancyMatches(masterChoiceOf);
   const count = new Map();
   for (const [name, m] of Object.entries(matches)) {
     const st = store.state.apps[name]?.status;
@@ -2106,12 +2119,20 @@ app.post('/api/vacancies/:name/tailor', agentReady, wrap(async (req, res) => {
   const a = store.app(name);
   if (busy(a, 'tailor')) return res.status(409).json({ error: 'уже идёт' });
   if (!fs.existsSync(path.join(store.VACANCIES, `${name}.md`))) return res.status(400).json({ error: 'нет файла вакансии' });
-  const baseVersion = master.activeVersion();
+  // C18: явный профиль становится ручным выбором; без него — выбор заявки или рекомендация
+  if (req.body?.profile) {
+    const p = master.profileById(String(req.body.profile));
+    if (!p || !p.version || p.archived) return res.status(400).json({ error: 'этот профиль Master CV нельзя выбрать' });
+    a.masterChoice = { profile: p.id, by: 'me', at: new Date().toISOString() };
+  }
+  const pick = await master.pickFor(name, a.masterChoice);
+  const baseVersion = pick.version;
   cvv.holdForTailor(name, a);
   cvv.dropDraft(name);
   const job = runJob({
     kind: 'tailor', target: name,
-    prompt: prompts.tailor({ name, fit: store.app(name).fit, insights: vacancyInsights(name), mine: a.cvAuthor === 'me' }),
+    prompt: prompts.tailor({ name, fit: store.app(name).fit, insights: vacancyInsights(name), mine: a.cvAuthor === 'me',
+      base: baseVersion ? { file: master.baseFor(baseVersion), title: pick.currentTitle } : null }),
     logFile: path.join(store.outDir(name), 'agent-tailor.log'),
     onDone: async () => {
       if (!fs.existsSync(path.join(store.outDir(name), 'CV.docx'))) throw new Error('агент закончил, но CV.docx не появился');
@@ -2561,6 +2582,7 @@ app.post('/api/vacancies/:name/keywords', agentReady, wrap(async (req, res) => {
 // ---------- Master CV ----------
 
 const masterState = { draft: null }; // один черновик из файла за раз
+const masterChoiceOf = (name) => store.state.apps[name]?.masterChoice || null; // C18
 
 // Ответы на вопросы формы + humanizer-score (кэш по mtime 05-answers.md)
 const humanizeCache = new Map();
@@ -2606,7 +2628,7 @@ async function tailoredList() {
     if (!info.hasCV) continue;
     const cv = await store.cvMetrics(name);
     out.push({ name, role: info.role, company: info.company, status: info.status, builtAt: info.builtAt,
-      baseVersion: info.baseVersion, stale: master.isStale(info.baseVersion),
+      baseVersion: info.baseVersion, baseProfile: master.profileOf(info.baseVersion)?.title || '', stale: master.isStale(info.baseVersion),
       coverage: cv?.coverage ?? null, change: cv?.change ?? null, changeOk: cv?.changeOk ?? null,
       pages: cv?.pages ?? null, lengthOk: cv?.lengthOk ?? null, hasPdf: info.files.includes('CV.pdf'),
       exportNames: store.exportNames(name, info) });
@@ -2614,8 +2636,27 @@ async function tailoredList() {
   return out.sort((a, b) => b.builtAt - a.builtAt);
 }
 
+app.get('/api/master/profiles', wrap(async (req, res) => res.json(await master.profilesSummary())));
+
+app.post('/api/master/profiles', wrap(async (req, res) => {
+  const r = master.createProfile(req.body || {});
+  if (!r.ok) return res.status(400).json(r);
+  res.json(r);
+}));
+
+app.patch('/api/master/profiles/:id', wrap(async (req, res) => {
+  const r = master.updateProfile(req.params.id, req.body || {});
+  if (!r.ok) return res.status(r.error === 'нет такого профиля' ? 404 : 400).json(r);
+  res.json(r);
+}));
+
+app.get('/api/vacancies/:name/master-pick', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  res.json(await master.pickFor(name, store.app(name).masterChoice));
+}));
+
 app.get('/api/master', wrap(async (req, res) => {
-  const sum = await master.summary();
+  const sum = await master.summary(req.query.profile ? String(req.query.profile) : undefined);
   for (const v of sum.versions) v.exportName = store.masterExportName(v.version, '');
   res.json({ ...sum, draft: draftInfo(), tailored: await tailoredList() });
 }));
@@ -2662,7 +2703,8 @@ app.post('/api/master/draft', agentReady, express.raw({ type: 'application/octet
       if (!fs.existsSync(path.join(dir, 'draft.md'))) throw new Error('агент закончил, но draft.md не появился');
     },
   });
-  masterState.draft = { id, jobId: job.id, original, created: Date.now(), words: check.words };
+  const profile = master.profileById(String(req.query.profile || ''))?.id || null;
+  masterState.draft = { id, jobId: job.id, original, created: Date.now(), words: check.words, profile };
   res.json({ draft: draftInfo() });
 }));
 
@@ -2681,14 +2723,15 @@ app.delete('/api/master/draft', wrap(async (req, res) => {
 }));
 
 app.post('/api/master/validate', wrap(async (req, res) => {
-  res.json(await master.validate(String(req.body.text || '')));
+  res.json(await master.validate(String(req.body.text || ''), req.body.profile ? String(req.body.profile) : undefined));
 }));
 
 app.post('/api/master/versions', wrap(async (req, res) => {
   const text = String(req.body.text || '');
   const d = req.body.fromDraft ? draftInfo() : null;
   const sourceFile = d ? path.join(master.DRAFTS, d.id, fs.readdirSync(path.join(master.DRAFTS, d.id)).find((f) => f.startsWith('source.'))) : null;
-  const r = await master.saveVersion({ text, source: d ? 'upload' : 'edit', note: String(req.body.note || ''), sourceFile });
+  const profile = d?.profile || (req.body.profile ? String(req.body.profile) : undefined);
+  const r = await master.saveVersion({ text, source: d ? 'upload' : 'edit', note: String(req.body.note || ''), sourceFile, profile, confirmRoles: !!req.body.confirmRoles });
   if (!r.ok) return res.status(400).json(r);
   if (d) {
     // исходник с оригинальным именем — для истории

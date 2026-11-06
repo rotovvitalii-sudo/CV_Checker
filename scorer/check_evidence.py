@@ -7,7 +7,8 @@ check_evidence.py — можно ли верить тексту CV: числа, 
             Строки карточек с пометками NDA / предположение / оценка в базу не идут (tailor-cv, правило 2).
             Числа словами («three») и смысл числа не проверяются: только сам факт, что такое число есть в базе.
   roles   — компании, должности, даты и порядок ролей как в базе, строка Languages без изменений.
-            Нужен --base. Без него (проверка самого Master CV) пропускается.
+            Нужен --base или --roles-from. Без них (проверка самого Master CV) пропускается.
+            --roles-from сверяет только роли и не добавляет файл к базе чисел: так профили Master сверяются между собой (C18).
 
 Мягкие проверки (style_ok, только предупреждение):
   duties  — больше одного буллета-обязанности на роль: без числа и начинается с глагола обязанности.
@@ -126,6 +127,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cv", required=True)
     ap.add_argument("--base", help="базовое CV: без него роли не сверяются, а числа — только по карточкам")
+    ap.add_argument("--roles-from", help="с чем сверять роли, если не с --base")
     ap.add_argument("--cards", default="knowledge-base/cards")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
@@ -141,8 +143,8 @@ def main():
                 unknown.append(shown)
 
     roles = None
-    if a.base:
-        base = parse(Path(a.base).read_text())
+    if a.roles_from or a.base:
+        base = parse(Path(a.roles_from or a.base).read_text())
         want, got = [role_key(r) for r in base["roles"]], [role_key(r) for r in cv["roles"]]
         missing = [k for k in want if k not in got]
         extra = [k for k in got if k not in want]

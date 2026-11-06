@@ -306,7 +306,7 @@ function allTable(stages) {
     const run = runningJobs(i)[0];
     const cv = i.hasCV ? (i.cv?.coverage != null ? pct(i.cv.coverage) : 'готово')
       : run?.kind === 'tailor' ? '<span class="muted">собирается…</span>'
-        : i.master ? `<span class="muted" title="Матч с Master CV v${i.master.version}">база ${pct(i.master.score)}</span>` : '<span class="muted">—</span>';
+        : i.master ? `<span class="muted" title="Матч с ${esc(i.master.profileTitle || 'Master CV')} v${i.master.version}">база ${pct(i.master.score)}</span>` : '<span class="muted">—</span>';
     const letter = i.letter?.share != null ? pct(i.letter.share)
       : i.letterFile ? 'готово'
         : i.hasCV ? `<span class="muted">${i.dictation ? 'есть надиктовка' : 'нет надиктовки'}</span>` : '<span class="muted">—</span>';
@@ -514,12 +514,13 @@ function renderDetail() {
           ${d.files.includes('02-match-report.md') ? `<button class="small" data-doc="02-match-report.md">Совпадения</button>` : ''}` : ''}
         </span></h2>
       ${tailorBusy || jTailor?.state === 'error' ? jobBlock(jTailor) : ''}
-      ${d.hasCV ? `<div class="row" style="margin-bottom:10px"><span class="chip ${d.cvStale ? 'warn' : ''}">собрано из Master v${d.baseVersion}${d.cvStale ? `, актуальна v${d.masterVersion} — можно пересобрать` : ''}</span>
+      ${d.hasCV ? `<div class="row" style="margin-bottom:10px"><span class="chip ${d.cvStale ? 'warn' : ''}">собрано из ${esc(d.baseProfile?.title || 'Master')} v${d.baseVersion}${d.cvStale ? `, актуальна v${d.baseProfile?.version ?? d.masterVersion} — можно пересобрать` : ''}</span>
         ${d.builtAt ? `<span class="muted">${new Date(d.builtAt).toLocaleDateString('ru-RU')}</span>` : ''}</div>` : ''}
       ${d.hasCV && d.cv ? cvBody(d.cv) : ''}
       ${verdictBlock(d)}
       ${d.hasCV ? exportNameRow(d) : ''}
       ${d.hasCV ? myCvBlock(d) : ''}
+      ${!tailorBusy ? basePickRow(d) : ''}
       ${!tailorBusy ? `<div class="row" style="margin-top:${d.hasCV ? 12 : 0}px">
         <button id="tailorBtn" class="${d.hasCV ? '' : 'primary'}" ${d.hasVacancy && d.hasVacancyText ? '' : 'disabled'}>${d.hasCV ? 'Пересобрать CV' : 'Адаптировать CV'}</button>
         <span class="hint" style="margin:0">${d.hasVacancyText ? 'Агент tailor-cv: требования → карточки → CV.docx → чекер. Обычно 5–15 минут.' : 'Сначала вставь текст вакансии в блоке «Матч».'}</span></div>` : ''}
@@ -795,7 +796,7 @@ function masterBlock(d, kwBusy, jKw) {
   }
   const cls = m.score >= 0.75 ? 'good' : m.score >= 0.5 ? 'warn' : 'bad';
   return `<div class="sub">
-    <div class="row"><strong>Матч с Master CV v${m.version}</strong>
+    <div class="row"><strong>Матч с ${esc(m.profileTitle || 'Master CV')} v${m.version}</strong>
       <span class="chip ${cls}">${pct(m.score)}</span><span class="muted">must ${m.must}</span>
       ${m.delta != null ? `<span class="muted">${delta(m.delta) || '±0%'} к v${m.prevVersion}</span>` : ''}
       ${d.cv?.coverage != null ? `<span class="muted">· адаптированное CV: ${pct(d.cv.coverage)}</span>` : ''}</div>
@@ -836,6 +837,27 @@ function evidenceNote(e) {
   if (e.claims?.length) soft.push(`общие слова: ${e.claims.map(esc).join(', ')}`);
   if (e.voice?.length) soft.push(`местоимения: ${e.voice.map(esc).join(', ')}`);
   return `${hard.length ? `<p class="warn-text" style="margin:8px 0 0">Факты: ${hard.join(' · ')}.</p>` : ''}${soft.length ? `<p class="muted" style="margin:8px 0 0">Подача: ${soft.join(' · ')}.</p>` : ''}`;
+}
+
+// C18: на какой профиль Master CV опирается адаптация. Рейтинг считает pick_master.py, выбрать можно другой
+function basePickRow(d) {
+  const p = d.masterPick;
+  if (!p?.current) return '';
+  const rank = Object.fromEntries(p.ranking.map((r) => [r.profile, r]));
+  const opt = (o) => {
+    const r = rank[o.id];
+    return `<option value="${esc(o.id)}" ${o.id === p.current ? 'selected' : ''}>${esc(o.title)}${r ? ` · ${pct(r.score)} · must ${r.must}` : ''}${o.id === p.recommended ? ' · рекомендован' : ''}</option>`;
+  };
+  const items = p.options.slice().sort((a, b) => (rank[b.id]?.score ?? -1) - (rank[a.id]?.score ?? -1));
+  const why = p.manual
+    ? `Твой выбор.${p.recommended !== p.current ? ` Система рекомендует ${esc(p.recommendedTitle)}: ${esc(p.reason)}.` : ''}`
+    : `Автовыбор: ${esc(p.reason)}.${p.provisional ? ' Ключи из быстрого фита, поэтому выбор предварительный.' : ''}`;
+  return `<div class="row" style="margin-top:12px">
+    <label for="basePick">База</label>
+    <select id="basePick" style="width:auto;max-width:100%">${items.map(opt).join('')}</select>
+    ${p.manual ? '<button type="button" class="small" id="baseAuto">Вернуть автовыбор</button>' : ''}
+    <span class="hint" style="margin:0">${why}</span>
+  </div>`;
 }
 
 function cvBody(cv) {
@@ -971,6 +993,16 @@ function bindDetail() {
     loadList();
   });
   $('#kwBtn')?.addEventListener('click', () => startStep('keywords'));
+  const setBase = async (masterChoice) => {
+    try { await api(`/api/vacancies/${enc(d.name)}`, { method: 'PATCH', body: { masterChoice } }); } catch (e) { alert(e.message); }
+    await loadDetail();
+    loadList();
+  };
+  $('#basePick')?.addEventListener('change', (e) => {
+    if (d.cvAuthor === 'me' && !confirm('Актуальна твоя версия CV. Основой останется её текст, а дрейф будет считаться от нового профиля. Сменить базу?')) { e.target.value = d.masterPick.current; return; }
+    setBase(e.target.value);
+  });
+  $('#baseAuto')?.addEventListener('click', () => setBase(null));
   $('#tailorBtn')?.addEventListener('click', () => {
     const msg = d.cvAuthor === 'me' ? 'Пересобрать CV? Основой станет твоя версия, агент сохранит правки. Сама версия останется в истории.'
       : 'Пересобрать CV заново? Текущая версия останется в истории.';

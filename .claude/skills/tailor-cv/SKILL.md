@@ -17,6 +17,10 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), Bash(.venv/bin/pytho
 Вход: `vacancies/<Роль - Компания>.md`. Выход: `output/<Роль - Компания>/` с CV.docx, CV.pdf и отчётами.
 Ты собираешь CV **только из фактов базы знаний**. Это главное правило; всё остальное — техника.
 
+**Базовое CV** — профиль Master CV под тип роли. Если промпт называет файл базы, бери его. В чате определи базу сам:
+`.venv/bin/python scorer/pick_master.py --only "<Роль - Компания>"`, файл — `knowledge-base/master-cv/versions/vNNN/base-cv.md` выбранного профиля
+(номер — в `knowledge-base/master-cv/active.json`). Без профилей база — `knowledge-base/base-cv.md`. Ниже `<база>` означает этот файл.
+
 ## Жёсткие правила
 
 1. **Честность.** Каждое утверждение в CV должно прослеживаться до карточки в `knowledge-base/cards/`
@@ -34,7 +38,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), Bash(.venv/bin/pytho
    Максимум 3 итерации. Не набивать ключевыми словами: слово добавляется только туда, где его
    подтверждает факт.
 3a. **Мастер-CV меняется не более чем на 30%** (с 2026-10-16; было 20%). Адаптация — заметная, но
-   не переписывание `knowledge-base/base-cv.md`: шапка под роль, профиль, 1–2 highlight, 3–6 буллетов,
+   не переписывание `<база>`: шапка под роль, профиль, 1–2 highlight, 3–6 буллетов,
    Skills. Всё остальное — дословно из базы. Проверяет `scorer/check_diff.py` (word-level diff,
    порог 30%). Удаление буллетов тоже считается изменением. Если под вакансию честно нужно больше
    30% — остановись и скажи об этом в отчёте: это сигнал, что базовое CV не подходит под тип роли,
@@ -76,7 +80,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), Bash(.venv/bin/pytho
 есть ли у него кейс, которого нет в базе?
 
 ### Шаг 3. Сборка → `CV.md`
-**Скопируй `knowledge-base/base-cv.md` в `output/<...>/CV.md` и правь его.** Формат файла —
+**Скопируй `<база>` в `output/<...>/CV.md` и правь его.** Формат файла —
 см. [references/cv-format.md](references/cv-format.md). Как писать профиль и буллеты —
 см. [references/cv-writing.md](references/cv-writing.md): каждый изменённый буллет идёт по формуле
 «действие → было/стало → как измерено → следствие», если факты для этого есть в карточке. Бюджет правок — 30% слов (~165 слов),
@@ -102,9 +106,9 @@ node .claude/skills/tailor-cv/scripts/build_docx.js "output/<...>/CV.md" "output
 
 ### Шаг 5. Чекер, часть (а) — скрипты
 ```
-.venv/bin/python scorer/check_diff.py --base knowledge-base/base-cv.md --cv "output/<...>/CV.md" --title "<role из вакансии>"
+.venv/bin/python scorer/check_diff.py --base "<база>" --cv "output/<...>/CV.md" --title "<role из вакансии>"
 .venv/bin/python scorer/check_cv.py --docx "output/<...>/CV.docx" --keywords "output/<...>/01-keywords.json" --report "output/<...>/03-score.md"
-.venv/bin/python scorer/check_evidence.py --base knowledge-base/base-cv.md --cv "output/<...>/CV.md"
+.venv/bin/python scorer/check_evidence.py --base "<база>" --cv "output/<...>/CV.md"
 ```
 `check_evidence.py`: `FAIL` — в CV есть число, которого нет в базе, или изменились компания, должность, даты, языки. Такое не «дотягивается»:
 убери число или верни как в базе. `WARN` по подаче (обязанности, общие слова, местоимения) — исправь, если хватает бюджета 30%.

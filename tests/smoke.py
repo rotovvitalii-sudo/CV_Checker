@@ -94,7 +94,7 @@ def calibrations():
 def api(base):
     section("API")
     urls = ["/", "/api/vacancies", "/api/insights", "/api/feed", "/api/feed/edtech/companies", "/api/feed/fintech/companies",
-            "/api/job-sites", "/api/master", "/api/profile", "/api/profile-answers", "/api/events",
+            "/api/job-sites", "/api/master", "/api/master/profiles", "/api/profile", "/api/profile-answers", "/api/events",
             "/api/agent/status", "/api/agent/usage", "/api/cases", "/api/agent/models",
             "/api/targets", "/api/stories", "/api/money", "/api/week", "/api/feed/keys", "/api/voice", "/api/answer-library"]
     for u in urls:

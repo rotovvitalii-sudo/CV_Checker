@@ -5,18 +5,20 @@ const SOURCE_LABELS = { initial: 'исходная', upload: 'из файла', 
 let mv = null;          // ответ /api/master
 let editor = null;      // { mode: 'edit'|'draft', text, base, notes, check }
 let mvPoll = null;
+let mvProfile = null;   // выбранный профиль (C18)
 
 // ---------- данные ----------
 
 async function loadMaster() {
   try {
-    mv = await api('/api/master');
+    mv = await api(`/api/master${mvProfile ? `?profile=${enc(mvProfile)}` : ''}`);
   } catch (e) {
     $('#masterView').innerHTML = `<div class="wrap"><p class="error">${esc(e.message)}</p></div>`;
     return;
   }
   // Черновик из файла готов — открываем ревью
   if (mv.draft?.state === 'ready' && (!editor || editor.mode !== 'draft')) {
+    if (mv.draft.profile && mv.draft.profile !== mv.profile) { mvProfile = mv.draft.profile; return loadMaster(); }
     const d = await api('/api/master/draft');
     editor = { mode: 'draft', text: d.text, base: await activeText(), notes: d.notes, check: null, original: d.draft.original };
   }
@@ -26,20 +28,54 @@ async function loadMaster() {
 }
 
 async function activeText() {
+  if (!mv.active) return '';
   const v = await api(`/api/master/versions/${mv.active}`);
   return v.text;
+}
+
+const curProfile = () => mv.profiles.find((p) => p.id === mv.profile);
+
+function profileBar() {
+  const p = curProfile();
+  const live = mv.profiles.filter((x) => !x.archived);
+  const tab = (x) => `<button type="button" class="small ${x.id === mv.profile ? 'primary' : ''}" data-profile="${esc(x.id)}">${esc(x.title)}<span class="${x.id === mv.profile ? '' : 'muted'}"> · ${x.version ? `v${x.version}` : 'пусто'}</span></button>`;
+  return `<div class="card">
+    <div class="row">${live.map(tab).join('')}
+      ${live.length < mv.max ? '<button type="button" class="small" id="mAddProfile">+ Профиль</button>' : ''}
+      <span class="muted small">${live.length} из ${mv.max}</span></div>
+    ${mv.profiles.some((x) => x.archived) ? `<div class="row" style="margin-top:6px"><span class="muted small">Архив:</span>${mv.profiles.filter((x) => x.archived).map(tab).join('')}</div>` : ''}
+    <div class="row" style="margin-top:10px">
+      ${p.isDefault ? '<span class="chip good">основной</span>' : ''}${p.archived ? '<span class="chip warn">в архиве</span>' : ''}
+      <span class="muted small">Автовыбор смотрит на слова в названии роли: ${esc((p.terms || []).join(', '))}</span>
+      <button type="button" class="small" id="mTerms">Слова</button>
+      <button type="button" class="small" id="mRename">Переименовать</button>
+      ${!p.isDefault && p.version && !p.archived ? '<button type="button" class="small" id="mDefault">Сделать основным</button>' : ''}
+      ${p.archived ? '<button type="button" class="small" id="mUnarchive">Вернуть</button>' : !p.isDefault ? '<button type="button" class="small" id="mArchive">В архив</button>' : ''}
+    </div>
+    <p class="error" id="mProfileErr"></p></div>`;
+}
+
+function emptyProfile() {
+  const p = curProfile();
+  return `<div class="card">
+    <h2>${esc(p.title)}: версий пока нет</h2>
+    <p class="muted">Загрузи CV под этот тип роли или начни с текста основного профиля. Факты должны совпадать во всех профилях: меняются акцент и формулировки.</p>
+    ${editor ? editorBlock() : `<div class="row">
+      <button class="primary" id="mUpload" ${mv.draft?.state === 'running' ? 'disabled' : ''}>Загрузить файл</button>
+      <button id="mFromDefault">Начать с основного</button></div>`}
+  </div>`;
 }
 
 // ---------- рендер ----------
 
 function renderMaster() {
   const act = mv.versions.find((v) => v.active);
-  const next = Math.max(...mv.versions.map((v) => v.version)) + 1;
   $('#masterView').innerHTML = `<div class="wrap">
+    ${profileBar()}
     ${draftBanner()}
-    <div class="card">
+    ${!act ? emptyProfile() : `<div class="card">
       <div class="cur-head">
-        <h1>Master CV v${act.version}</h1>
+        <h1>${esc(curProfile().title)} v${act.version}</h1>
         <span class="chip good">актуальная</span>
         <span class="muted">${fmtDate(act.created)} · ${SOURCE_LABELS[act.source] || act.source}${act.note ? ' · ' + esc(act.note) : ''}</span>
         <div class="tools">
@@ -54,16 +90,16 @@ function renderMaster() {
         ${act.pages ? `<span>${act.pages} стр., запас ${act.bottom_free_mm} мм</span>` : ''}
         ${act.avgMatch != null ? `<span>· средний матч с вакансиями ${pct(act.avgMatch)}</span>` : ''}
       </div>
-      ${editor ? editorBlock(next) : act.hasPdf ? `<iframe class="pdf" src="/master-files/${act.version}/${enc('Master CV.pdf')}#view=FitH" title="Master CV v${act.version}"></iframe>` : ''}
-    </div>
+      ${editor ? editorBlock() : act.hasPdf ? `<iframe class="pdf" src="/master-files/${act.version}/${enc('Master CV.pdf')}#view=FitH" title="Master CV v${act.version}"></iframe>` : ''}
+    </div>`}
 
-    <div class="card">
+    ${!act ? '' : `<div class="card">
       <h2>История версий</h2>
       <div class="table-wrap"><table class="grid">
         <thead><tr><th>Версия</th><th>Дата</th><th>Источник</th><th>Комментарий</th><th>Изменение</th><th>Ср. матч</th><th>Стр.</th><th></th></tr></thead>
         <tbody>${mv.versions.map(versionRow).join('')}</tbody>
       </table></div>
-    </div>
+    </div>`}
 
     <div class="card">
       <h2>Адаптированные CV <span class="muted" style="font-weight:400">· ${mv.tailored.length}</span></h2>
@@ -112,7 +148,7 @@ function tailoredRow(t) {
   return `<tr>
     <td><a href="#" data-goto="${esc(t.name)}">${esc(t.role)}</a><div class="muted">${esc(t.company)}</div></td>
     <td class="num">${t.builtAt ? new Date(t.builtAt).toLocaleDateString('ru-RU') : '—'}</td>
-    <td class="num"><span class="chip ${t.stale ? 'warn' : ''}">v${t.baseVersion}</span>${t.stale ? '<div class="muted">устарело</div>' : ''}</td>
+    <td class="num"><span class="chip ${t.stale ? 'warn' : ''}">${esc(t.baseProfile)} v${t.baseVersion}</span>${t.stale ? '<div class="muted">устарело</div>' : ''}</td>
     <td class="num">${pct(t.coverage)}</td>
     <td class="num ${t.changeOk === false ? 'error' : ''}">${pct(t.change)}</td>
     <td class="num">${t.pages ?? '—'}</td>
@@ -122,14 +158,14 @@ function tailoredRow(t) {
         <a href="/files/${enc(t.name)}/CV.pdf/${enc(t.exportNames.cvPdf)}" target="_blank" rel="noopener" title="Открыть во вкладке"><button class="small">↗</button></a>` : ''}</td></tr>`;
 }
 
-function editorBlock(next) {
+function editorBlock() {
   const n = editor.notes;
   const list = (title, arr) => (arr?.length ? `<strong>${title}</strong><ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
   const notes = n && (n.issues?.length || n.changes?.length || n.conflicts?.length)
     ? `<div class="notes">${list('Расхождения с базой знаний — проверь', n.conflicts)}${list('Что изменилось по смыслу', n.changes)}${list('Сомнения агента', n.issues)}</div>` : '';
   return `<div class="sub">
     <div class="row"><strong>${editor.mode === 'draft' ? `Ревью черновика из «${esc(editor.original)}»` : 'Правка Master CV'}</strong>
-      <span class="muted">слева — текст в формате CV.md, справа — изменения относительно v${mv.active}</span></div>
+      <span class="muted">слева — текст в формате CV.md, справа — изменения ${mv.active ? `относительно v${mv.active}` : 'к пустому профилю'}</span></div>
     ${notes}
     <div class="editor">
       <textarea id="mText" spellcheck="false">${esc(editor.text)}</textarea>
@@ -138,7 +174,7 @@ function editorBlock(next) {
     <div class="row" style="margin-top:12px">
       <input id="mNote" placeholder="Комментарий к версии (что поменял и зачем)" style="flex:1;min-width:220px" value="${esc(editor.note || '')}">
       <button id="mCheck">Проверить</button>
-      <button id="mSave" class="primary">Сохранить как v${next}</button>
+      <button id="mSave" class="primary">Сохранить версию</button>
       <button id="mCancel">${editor.mode === 'draft' ? 'Отклонить черновик' : 'Отмена'}</button>
     </div>
     <div class="check" id="mCheckOut">${checkOut(editor.check)}</div>
@@ -151,7 +187,7 @@ function checkOut(c) {
   const parts = [];
   for (const e of c.errors || []) parts.push(`<div class="error" style="margin:2px 0">✕ ${esc(e)}</div>`);
   for (const w of c.warnings || []) parts.push(`<div style="color:var(--warn)">⚠ ${esc(w)}</div>`);
-  if (c.ok) parts.unshift(`<div class="ok">✓ Структура в порядке · ${c.pages ?? '?'} стр., запас ${c.bottomFree ?? '?'} мм · ${c.words} слов · изменение к v${mv.active}: ${pctFine(c.change)}</div>`);
+  if (c.ok) parts.unshift(`<div class="ok">✓ Структура в порядке · ${c.pages ?? '?'} стр., запас ${c.bottomFree ?? '?'} мм · ${c.words} слов${mv.active ? ` · изменение к v${mv.active}: ${pctFine(c.change)}` : ''}</div>`);
   return parts.join('');
 }
 
@@ -201,7 +237,52 @@ function renderDiff() {
 
 // ---------- действия ----------
 
+async function changeProfile(body) {
+  try { await api(`/api/master/profiles/${enc(mv.profile)}`, { method: 'PATCH', body }); await loadMaster(); }
+  catch (e) { $('#mProfileErr').textContent = e.message; }
+}
+
+function bindProfiles() {
+  document.querySelectorAll('[data-profile]').forEach((b) => b.addEventListener('click', () => {
+    if (editor && !confirm('Закрыть редактор? Несохранённые правки пропадут.')) return;
+    editor = null;
+    mvProfile = b.dataset.profile;
+    loadMaster();
+  }));
+  $('#mAddProfile')?.addEventListener('click', async () => {
+    const title = prompt('Название профиля, например Growth Product Manager');
+    if (!title) return;
+    try {
+      const r = await api('/api/master/profiles', { method: 'POST', body: { title } });
+      mvProfile = r.profile.id;
+      await loadMaster();
+    } catch (e) { $('#mProfileErr').textContent = e.message; }
+  });
+  $('#mRename')?.addEventListener('click', () => {
+    const title = prompt('Новое название профиля', curProfile().title);
+    if (title) changeProfile({ title });
+  });
+  $('#mTerms')?.addEventListener('click', () => {
+    const terms = prompt('Слова из названия роли, через запятую', (curProfile().terms || []).join(', '));
+    if (terms) changeProfile({ terms });
+  });
+  $('#mDefault')?.addEventListener('click', () => {
+    if (confirm(`Сделать ${curProfile().title} основным? Его текст станет базой для всего, где вакансии ещё нет.`)) changeProfile({ default: true });
+  });
+  $('#mArchive')?.addEventListener('click', () => {
+    if (confirm(`Убрать ${curProfile().title} в архив? Автовыбор перестанет его предлагать, версии и собранные CV останутся.`)) changeProfile({ archived: true });
+  });
+  $('#mUnarchive')?.addEventListener('click', () => changeProfile({ archived: false }));
+  $('#mFromDefault')?.addEventListener('click', async () => {
+    const def = mv.profiles.find((p) => p.isDefault);
+    const v = await api(`/api/master/versions/${def.version}`);
+    editor = { mode: 'edit', text: v.text, base: '', notes: null, check: null };
+    renderMaster();
+  });
+}
+
 function bindMaster() {
+  bindProfiles();
   $('#mEdit')?.addEventListener('click', async () => {
     editor = { mode: 'edit', text: await activeText(), base: await activeText(), notes: null, check: null };
     renderMaster();
@@ -243,9 +324,11 @@ function bindMaster() {
     const c = await runCheck();
     if (!c?.ok) return;
     if (c.change === 0 && !confirm('Текст не отличается от актуальной версии. Всё равно сохранить новую версию?')) return;
+    const differ = c.rolesDiffer;
+    if (differ && !confirm(`Компании, должности, даты или языки отличаются от профиля ${differ.profile}. Работодатель может увидеть обе версии. Сохранить, понимая, что факты отличаются?`)) return;
     e.target.disabled = true;
     try {
-      await api('/api/master/versions', { method: 'POST', body: { text: editor.text, note: editor.note || '', fromDraft: editor.mode === 'draft' } });
+      await api('/api/master/versions', { method: 'POST', body: { text: editor.text, note: editor.note || '', fromDraft: editor.mode === 'draft', profile: mv.profile, confirmRoles: !!differ } });
       editor = null;
       await loadMaster();
     } catch (err) {
@@ -269,7 +352,7 @@ async function runCheck() {
   $('#mCheckOut').innerHTML = checkOut(ed.check);
   let check;
   try {
-    check = await api('/api/master/validate', { method: 'POST', body: { text: ed.text } });
+    check = await api('/api/master/validate', { method: 'POST', body: { text: ed.text, profile: mv.profile } });
   } catch (e) {
     check = { ok: false, errors: [e.message] };
   }
@@ -284,7 +367,7 @@ $('#masterFile').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!f) return;
   try {
-    const res = await fetch('/api/master/draft', {
+    const res = await fetch(`/api/master/draft?profile=${enc(mv.profile)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(f.name) },
       body: f,
