@@ -35,6 +35,7 @@
 | C16 | [Своё сопроводительное письмо](41-my-letter.md) | Should | C8, C10, C13, S3 | ~0,5 д | ✅ готово |
 | C17 | [Подача CV: правила текста и проверка фактов](42-cv-writing.md) | Should | tailor-cv, Master CV, C15 | ~1 д | ✅ готово |
 | C18 | [Профили Master CV: своя база под тип роли](43-master-cv-profiles.md) | Should | Master CV, tailor-cv, C15, C17 | ~2 д | ✅ готово (P0) |
+| C19 | [Обучение: курсы, уроки, тесты и экзамен](44-courses.md) | Should | W8, C12, W5 | ~2,5–3 д | ✅ готово (P0) |
 | W1 | [Порог покрытия 60–70% и «верхняя треть» CV](23-coverage-top-third.md) | Must | tailor-cv | ~0,5 д | ✅ сделано (P0 + P1) |
 | W2 | [«Вакансия ещё живая?» до адаптации](24-vacancy-alive.md) | Must | C11, S6 | ~0,5 д | ✅ сделано (P0 + P1) |
 | W3 | [Вердикт рекрутера и сводка причин](25-recruiter-verdict.md) | Should | tailor-cv, S3 | ~1 д | ✅ сделано (P0 + P1) |

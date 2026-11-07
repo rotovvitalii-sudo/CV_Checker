@@ -559,12 +559,18 @@ ${library.map((t) => `- ${t.slug}: ${t.title_en}${t.outline ? `\n  Раздел�
 const videoRulesLine = (r) => (r ? `\nВидео: не длиннее ${r.max_minutes} мин, опубликовано не раньше чем ${r.max_years} г. назад, от ${r.min_views} просмотров, на английском.
 Предложи основное видео и до 4 запасных в \`video_candidates\` — сервер возьмёт первое, что пройдёт фильтр.` : '');
 
-function topicLesson({ slug, title_en, title_ru, vacancy, why, rules }) {
+function topicLesson({ slug, title_en, title_ru, vacancy, why, rules, course }) {
+  const ctx = course ? `Курс «${course.title}» (${course.kind === 'domain' ? 'доменный — нужен раздел Worked examples' : course.kind}), уровень: ${course.level}. Цель курса: ${course.goal}
+Модуль «${course.module}», урок ${course.n} из ${course.total}. Цель урока: ${course.lesson.goal || '—'}${(course.lesson.covers || []).length ? `; что войдёт: ${course.lesson.covers.join(', ')}` : ''}.
+Уже пройдены (не повторяй): ${course.prev.join('; ') || '—'}
+Будут дальше (не забегай вперёд): ${course.next.join('; ') || '—'}
+${course.glossary.length ? `Глоссарий курса: ${course.glossary.join(', ')}\n` : ''}${course.materials.length ? `Материалы кандидата (прочитай и опирайся):\n${course.materials.map((m) => `- ${m}`).join('\n')}\n` : ''}Раздел «Урок курса» скила обязателен.`
+    : `Контекст (для акцентов, не для фактов о кандидате): вакансия «${vacancy}»${why?.requirement ? `, требование: ${why.requirement}` : ''}${why?.cv_line ? `, строка CV: ${why.cv_line}` : ''}.`;
   return `${BACKGROUND}
 
 Задача: скил topic-lesson (\`.claude/skills/topic-lesson/SKILL.md\`), режим приложения.
 Тема: slug \`${slug}\`, «${title_en}» / «${title_ru}».
-Контекст (для акцентов, не для фактов о кандидате): вакансия «${vacancy}»${why?.requirement ? `, требование: ${why.requirement}` : ''}${why?.cv_line ? `, строка CV: ${why.cv_line}` : ''}.
+${ctx}
 Запиши \`knowledge-base/learning/${slug}/lesson.en.md\` и \`knowledge-base/learning/${slug}/meta.json\` по схеме скила.${videoRulesLine(rules)}`;
 }
 
@@ -580,7 +586,7 @@ ${bad ? `Прошлое видео не подошло: ${bad}.\n` : ''}${reject
 
 const TEST_SYSTEM = 'Ты составляешь тест по учебному материалу для подготовки к собеседованию. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
-function topicTest({ lessonText, video, past, n, lang = 'en' }) {
+function topicTest({ lessonText, video, past, n, lang = 'en', numeric = false }) {
   const L = lang === 'ru' ? 'на русском (термины — по-английски, как в уроке)' : 'на английском (English only)';
   // Материал видео: ключевые мысли агента, иначе главы и описание со страницы (если там есть содержание)
   const vmat = video?.key_points?.length ? video.key_points.map((k) => `- ${k}`).join('\n')
@@ -593,7 +599,7 @@ ${lessonText.slice(0, 14000)}
 """
 ${vq ? `\nМатериал видео «${video.title}» (${video.key_points?.length ? 'ключевые мысли' : 'главы и описание со страницы'}):\n${vmat}\n` : ''}
 Составь тест из ${n} вопросов ${L} — вопросы и варианты ответов целиком на этом языке: ${n - vq} — по уроку${vq ? `, ${vq} — по материалу видео (только то, что в нём написано; рекламу и ссылки не спрашивай)` : ''}.
-Каждый вопрос — выбор из 4 вариантов, ровно один верный; неверные — правдоподобные, не абсурдные. Проверяй понимание
+${numeric ? 'Доменный курс: не меньше 2 вопросов — задачи с числами по разделу Worked examples (посчитать маржу, своп, стоимость пункта и т.п.), варианты — числа.\n' : ''}Каждый вопрос — выбор из 4 вариантов, ровно один верный; неверные — правдоподобные, не абсурдные. Проверяй понимание
 (метрика, формула, когда применять подход, что хотят услышать на интервью, термин), а не память на формулировки.
 Ответ должен однозначно следовать из материала выше — ничего сверх него. Не пиши «по уроку» / «according to the lesson» — спрашивай о предмете.
 ${past.length ? `\nЭти вопросы уже были — не повторяй их и не перефразируй:\n${past.map((q) => `- ${q}`).join('\n')}\n` : ''}
@@ -688,6 +694,50 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
 Верни JSON: {"short": "…", "long": "…", "theses_ru": ["…", "…", "…"], "trace": [...]}`;
 }
 
+// C19: структура курса — агент с поиском по скилу course-outline
+function courseOutline({ course, materials, library, out }) {
+  return `${BACKGROUND}
+
+Задача: скил course-outline (\`.claude/skills/course-outline/SKILL.md\`), режим приложения.
+Курс «${course.title}» · тип: ${course.kind} · тема: ${course.topic} · уровень: ${course.level}
+Цель: ${course.goal}
+Время: ${course.hours_per_week} ч в неделю${course.weeks ? `, ${course.weeks} недель` : ', срок не задан'}.
+${course.refs ? `На что опираться (от кандидата): ${course.refs}\n` : ''}${materials.length ? `Материалы кандидата:\n${materials.map((m) => `- ${m}`).join('\n')}\n` : ''}
+Готовые уроки в библиотеке (не дублируй по смыслу; если урок нужен курсу — используй тот же slug):
+${library.map((t) => `- ${t.slug}: ${t.title_en}`).join('\n') || '—'}
+
+Результат — строго \`${out}\` по схеме скила.`;
+}
+
+// C19: пробный экзамен по всем урокам курса — один ход
+const EXAM_SYSTEM = 'Ты составляешь пробный экзамен по учебному курсу в стиле сертификационного. Только по материалу уроков. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+function courseExam({ course, lessons, n, past }) {
+  return `Курс «${course.title}». Цель: ${course.goal}
+Уроки (slug и текст):
+${lessons.map((l) => `=== ${l.slug} · ${l.title} ===\n${l.text.slice(0, 5000)}`).join('\n\n')}
+
+Составь экзамен из ${n} вопросов на английском, как в сертификационном экзамене: сценарии («что сделает Product Owner…»), «выбери лучшее»,
+понятия и роли${course.kind === 'domain' ? ', и не меньше 6 задач с числами (маржа, уровень маржи, своп, стоимость пункта и т.п.)' : ''}.
+Покрой все уроки примерно поровну. Каждый вопрос — 4 варианта, ровно один верный; неверные — правдоподобные. Ответ однозначно следует из уроков.
+"lesson" — slug урока, к которому относится вопрос. "explain" — почему верно, одна фраза по-русски.
+${past.length ? `Эти вопросы уже были — не повторяй:\n${past.map((q) => `- ${q}`).join('\n')}\n` : ''}
+Верни JSON: {"questions": [{"q": "…", "options": ["…", "…", "…", "…"], "answer": 0-3, "explain": "…", "lesson": "<slug>"}]}`;
+}
+
+// C19: повторение сданной темы перед интервью — выжимка на 3 минуты и 5 вопросов
+const REVIEW_SYSTEM = 'Ты готовишь короткое повторение учебной темы перед собеседованием. Только по тексту урока. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+function topicReview({ lessonText, past }) {
+  return `Урок:
+"""
+${lessonText.slice(0, 14000)}
+"""
+
+1. "summary" — выжимка на 3 минуты чтения, markdown на английском: главная мысль, 5–7 пунктов с ключевыми понятиями и формулами, 2–3 фразы «как сказать на интервью».
+2. "questions" — 5 вопросов на английском, 4 варианта, один верный, на понимание, не на память. "explain" — одна фраза по-русски.
+${past.length ? `Не повторяй эти вопросы:\n${past.map((q) => `- ${q}`).join('\n')}\n` : ''}
+Верни JSON: {"summary": "…", "questions": [{"q": "…", "options": ["…", "…", "…", "…"], "answer": 0-3, "explain": "…"}]}`;
+}
+
 // C15: PDF или DOCX без стилей → формат CV.md, слово в слово
 const CV_LAYOUT_SYSTEM = 'Ты раскладываешь текст CV в markdown. Не меняешь, не переводишь, не добавляешь и не убираешь ни одного слова. Возвращаешь только markdown, без пояснений и без ограждений кода.';
 
@@ -766,5 +816,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
  "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
 }
 
-module.exports = { topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

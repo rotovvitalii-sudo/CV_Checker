@@ -3,7 +3,7 @@ const STATUS_LABELS = {
   new: 'Новая', ready: 'Пакет готов', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер',
   rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа',
 };
-const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', topicsmatch: 'сверка тем с библиотекой', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового', cvlayout: 'чтение твоего CV' };
+const STEP_LABELS = { fit: 'оценка фита', fitquick: 'быстрый фит', tailor: 'адаптация CV', letter: 'сопроводительное', keywords: 'ключевые слова', master: 'импорт Master CV', answers: 'ответы на вопросы формы', edtech: 'расширение базы компаний', outline: 'структура письма', lettergen: 'генерация письма', formfill: 'ответы для формы', verdict: 'вердикт рекрутера', interview: 'подготовка к собеседованию', practice: 'оценка ответа', outreach: 'черновик сообщения', case1: 'разбор кейса', case2: 'карточка кейса', casescan: 'поиск фактов', answerfacts: 'факты из ответа', voice: 'голосовой профиль', applymsg: 'сообщение к отклику', topics: 'темы для интервью', topicsmatch: 'сверка тем с библиотекой', lesson: 'урок по теме', lessonvideo: 'поиск видео', translate: 'перевод урока', topictest: 'тест по теме', insight: 'разбор инсайта', company: 'разбор компании', companysay: 'что сказать компании', whyus: '«почему мы»', hrq: 'вопросы к интервьюеру', testdebrief: 'разбор тестового', testplan: 'план тестового', cvlayout: 'чтение твоего CV', courseoutline: 'структура курса', courseexam: 'экзамен курса', topicreview: 'повторение темы' };
 const SCORE_LABELS = { task_fit: ['Задача', 4], domain: ['Домен', 2], role_type: ['Роль', 2], logistics: ['Логистика', 2] };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -64,6 +64,7 @@ function routeOf(h) {
   if (h.startsWith('#/feed')) return { view: 'feed' };
   if (h.startsWith('#/cases')) return { view: 'cases', sub: decodeURIComponent(h.slice(8)).replace(/^\//, '') };
   if (h.startsWith('#/tests')) return { view: 'tests', sub: decodeURIComponent(h.slice(8)).replace(/^\//, '') };
+  if (h.startsWith('#/learn')) return { view: 'learn', sub: decodeURIComponent(h.slice(8)).replace(/^\//, '') };
   return { view: 'home' };
 }
 
@@ -77,6 +78,7 @@ function route() {
   $('#feedView').classList.toggle('hidden', r.view !== 'feed');
   $('#casesView').classList.toggle('hidden', r.view !== 'cases');
   $('#testsView').classList.toggle('hidden', r.view !== 'tests');
+  $('#learnView').classList.toggle('hidden', r.view !== 'learn');
   document.querySelectorAll('[data-nav]').forEach((a) => {
     const on = a.dataset.nav === (r.view === 'vacancy' ? 'home' : r.view);
     a.classList.toggle('active', on);
@@ -92,6 +94,7 @@ function route() {
   else if (r.view === 'feed') loadFeed();
   else if (r.view === 'cases') loadCases(r);
   else if (r.view === 'tests') loadTests(r);
+  else if (r.view === 'learn') loadLearn(r);
 }
 window.addEventListener('hashchange', route);
 const openVacancy = (name) => { location.hash = `#/v/${enc(name)}`; };
@@ -1807,7 +1810,7 @@ function topicsSection(d) {
     ${T.refresh && !busy ? `<p class="warn-text small" style="margin:0 0 8px">${T.refresh === 'old' ? 'Темы собраны без текста вакансии и твоих ответов при подаче.' : 'Появились новые ответы при подаче.'} Нажми «пересобрать темы»: сданное засчитается, если тема та же.</p>` : ''}
     <ul class="tp-list">${T.list.map((t) => `<li class="tp-row ${openTopic === t.slug ? 'open' : ''}">
       <div class="tp-main"><button type="button" class="link-btn tp-title" data-topic="${esc(t.slug)}">${esc(title(t))}</button> ${topicPill(t)}
-        ${t.priority === 'high' ? '<span class="chip">главная</span>' : ''}${t.reused && !t.passed && t.hasLesson ? '<span class="chip info">урок уже есть</span>' : ''}</div>
+        ${t.priority === 'high' ? '<span class="chip">главная</span>' : ''}${t.reused && !t.passed && t.hasLesson ? '<span class="chip info">урок уже есть</span>' : ''}${(t.courses || []).length ? `<span class="chip">из курса ${esc(t.courses[0].title)}</span>` : ''}</div>
       <div class="muted small">${t.why.cv_line ? `CV: ${esc(t.why.cv_line)}` : ''}${t.why.cv_line && t.why.requirement ? ' · ' : ''}${t.why.requirement ? `вакансия: ${esc(t.why.requirement)}` : ''}</div>
       ${openTopic === t.slug ? '<div id="topicPanel" class="topic-panel"><p class="muted small"><span class="spin"></span>Загружаю урок…</p></div>' : ''}
     </li>`).join('')}</ul>
@@ -1859,6 +1862,7 @@ function renderTopic(d, t, data) {
     ${insBlock}
     ${(m.cards || []).length ? `<section><h4>Связь с твоим опытом</h4><ul class="tight small">${m.cards.map((c) => `<li><a href="#/cases/card/${enc(c.id)}">${esc(c.id)}</a> — ${esc(c.where || '')}</li>`).join('')}</ul></section>` : ''}
     ${(m.sources || []).length ? `<details class="more"><summary>Источники · ${m.sources.length}</summary><ul class="tight small">${m.sources.map((x) => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a></li>`).join('')}</ul></details>` : ''}
+    ${st.passed ? reviewHtml(data) : ''}
     <section class="tp-test"><h4>Тест</h4>
       ${res ? `<div class="banner ${res.passed ? 'good' : 'warn'}"><p style="margin:0"><strong>${res.right} из ${res.total} · ${Math.round(res.score * 100)}%</strong> —
           ${res.passed ? 'тема сдана.' : 'нужно от 80%. Перечитай разделы ниже и пересдай — вопросы будут новые.'}</p></div>
@@ -1873,6 +1877,44 @@ function renderTopic(d, t, data) {
           <span class="hint" style="margin:0">8 вопросов на языке урока (${data.lang === 'ru' ? 'RU' : 'EN'}), сдано от 7 верных (≥ 80%). Составляет Haiku, ≈ $0.003; проверяет приложение.</span></div>`}
     </section>
     <p class="muted small" style="margin:10px 0 0">Урок — общие знания по теме, не факты о тебе. <button type="button" class="link-btn inline" id="tpRelesson">пересоздать урок</button></p>`;
+}
+
+// C19: повторение сданной темы — выжимка на 3 минуты и 5 вопросов; на «сдано» не влияет
+let reviewAnswers = {};
+let reviewResult = null;
+function reviewHtml(data) {
+  const r = data.review;
+  const busy = jobBusy(data.reviewJob);
+  const from = (data.courses || []).length ? ` Тема из курса ${data.courses.map((c) => `<a href="#/learn/c/${enc(c.slug)}">${esc(c.title)}</a>`).join(', ')}.` : '';
+  if (!r) {
+    return `<section class="tp-review"><h4>Повторить</h4><p class="muted small" style="margin:0 0 6px">Тема сдана.${from} Перед интервью хватит повторения: выжимка на 3 минуты и 5 вопросов.</p>
+      ${busy ? '<p class="muted small"><span class="spin"></span>Готовлю выжимку…</p>' : '<button type="button" class="small" id="rvMake">Повторить (≈ $0.002)</button>'}</section>`;
+  }
+  const res = reviewResult?.slug === data.status.slug ? reviewResult : null;
+  return `<section class="tp-review"><details ${res ? 'open' : ''}><summary><strong>Повторить</strong> <span class="muted small">выжимка на 3 минуты и 5 вопросов${r.last ? ` · последний раз ${r.last.right}/${r.last.total}` : ''}</span></summary>
+    <div class="lesson">${r.html}</div>
+    ${res ? `<div class="banner ${res.right === res.total ? 'good' : 'warn'}"><p style="margin:0"><strong>${res.right} из ${res.total}</strong>${res.wrong.length ? ' — перечитай урок по ошибкам ниже' : ' — тема в голове'}</p></div>
+      ${res.wrong.length ? `<ol class="tp-wrong">${res.wrong.map((w) => `<li><strong>${esc(w.q)}</strong><div class="small">верно: <strong>${esc(w.options[w.correct])}</strong></div><div class="muted small">${esc(w.explain)}</div></li>`).join('')}</ol>` : ''}` : ''}
+    <form id="rvForm" class="tp-form">${r.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}</legend>
+      ${q.options.map((o, k) => `<label class="tp-opt"><input type="radio" name="${esc(q.id)}" value="${k}" ${reviewAnswers[q.id] === k ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}
+      <div class="row"><button type="submit" class="small">Проверить</button></div></form></details></section>`;
+}
+function bindReview(t, data, reload) {
+  $('#rvMake')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await api(`/api/topics/${enc(t.slug)}/review`, { method: 'POST' }); } catch (err) { alert(err.message); }
+    reload();
+    if (data.reviewJob === null) setTimeout(reload, 15000);
+  });
+  if (jobBusy(data.reviewJob)) setTimeout(reload, 4000);
+  const f = $('#rvForm');
+  f?.addEventListener('change', (e) => { if (e.target.name) reviewAnswers[e.target.name] = Number(e.target.value); });
+  f?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { reviewResult = { slug: t.slug, ...(await api(`/api/topics/${enc(t.slug)}/review/submit`, { method: 'POST', body: { answers: reviewAnswers } })) }; } catch (err) { alert(err.message); return; }
+    reviewAnswers = {};
+    reload();
+  });
 }
 
 async function loadTopic(d) {
@@ -1890,7 +1932,9 @@ async function loadTopic(d) {
 const fmtViews = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.0', '')} млн` : n >= 1e3 ? `${Math.round(n / 1e3)} тыс.` : String(n));
 
 function bindTopic(d, t, data) {
-  const base = `/api/vacancies/${enc(d.name)}/topics/${enc(t.slug)}`;
+  // C19: тот же урок открывается и в курсе — там свои запуск задач и перерисовка
+  const startStep = d.topicStart || window.startStep;
+  const loadDetail = d.topicReload || window.loadDetail;
   $('#tpClose')?.addEventListener('click', () => { openTopic = null; loadDetail(); });
   $('#tpLesson')?.addEventListener('click', () => startStep(`topics/${enc(t.slug)}/lesson`));
   $('#tpRelesson')?.addEventListener('click', () => {
@@ -1904,6 +1948,7 @@ function bindTopic(d, t, data) {
     if (topicLang === 'ru' && !data.status.hasRu) { await startStep(`topics/${enc(t.slug)}/translate`); return; }
     loadDetail();
   }));
+  bindReview(t, data, loadDetail);
   const form = $('#tpForm');
   if (!form) return;
   const left = () => { const n = data.test.questions.filter((q) => topicAnswers[q.id] == null).length; $('#tpLeft').textContent = n ? `без ответа: ${n}` : ''; };
@@ -2316,7 +2361,7 @@ const AGENT_STATES = {
   missing: ['bad', 'CLI не найден'],
   unknown: ['unknown', 'Статус агента неизвестен'],
 };
-const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', topicsmatch: 'Темы: сверка с библиотекой', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового', cvlayout: 'Раскладка моего CV' };
+const KIND_LABELS = { fit: 'Фит (подробно)', fitquick: 'Фит (быстрый)', tailor: 'Адаптация CV', letter: 'Письмо', keywords: 'Ключевые слова', master: 'Импорт Master CV', answers: 'Ответы формы', edtech: 'База компаний', outline: 'Структура письма', lettergen: 'Письмо (агент)', formfill: 'Форма на сайте', verdict: 'Вердикт рекрутера', interview: 'Собеседование', practice: 'Тренажёр', outreach: 'Сообщение контакту', case1: 'Кейс: вопросы', case2: 'Кейс: карточка', casescan: 'Факты из надиктовок', answerfacts: 'Факты из ответов', voice: 'Голосовой профиль', applymsg: 'Сообщение к отклику', topics: 'Темы для интервью', topicsmatch: 'Темы: сверка с библиотекой', lesson: 'Урок по теме', lessonvideo: 'Видео к уроку', translate: 'Перевод урока', topictest: 'Тест по теме', insight: 'Разбор инсайта', company: 'Разбор компании', companysay: 'Компания: что сказать', whyus: '«Почему мы»', hrq: 'Вопросы к интервьюеру', testdebrief: 'Разбор тестового', testplan: 'План тестового', cvlayout: 'Раскладка моего CV', courseoutline: 'Курс: структура', courseexam: 'Курс: экзамен', topicreview: 'Повторение темы' };
 const usd = (x) => (x == null ? '—' : `≈ $${x.toFixed(2)}`);
 const mins = (ms) => {
   if (ms == null) return '—';

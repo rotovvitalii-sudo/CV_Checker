@@ -136,6 +136,16 @@ def api(base):
     ok(code in (400, 404), f"тестовое с плохим slug → {code}")
     code, _, _ = get(base, "/api/tests/nope-nope")
     ok(code == 404, f"неизвестное тестовое → {code}")
+    # C19: курсы — каждый читается, экзамен без верных ответов, план не пустой у утверждённых
+    ln = json.loads(get(base, "/api/learn")[2])
+    for c in ln["courses"]:
+        code, _, body = get(base, f"/api/learn/courses/{q(c['slug'])}")
+        if ok(code == 200, f"курс {c['slug']} → {code}"):
+            cd = json.loads(body)
+            ok(not any("answer" in x for x in ((cd.get("exam") or {}).get("questions") or [])), f"курс {c['slug']}: в экзамене видны ответы")
+            ok(cd["course"]["status"] == "draft" or cd["progress"]["total"] > 0, f"курс {c['slug']}: утверждён без уроков")
+    code, _, _ = get(base, "/api/learn/courses/nope-nope")
+    ok(code == 404, f"неизвестный курс → {code}")
     items = json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:

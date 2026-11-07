@@ -29,6 +29,7 @@ const answerFacts = require('./answer-facts');
 const hrq = require('./hrq');
 const tests = require('./test-tasks');
 const cvv = require('./cv-versions');
+const courses = require('./courses');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -941,7 +942,7 @@ app.patch('/api/vacancies/:name/why-us', wrap(async (req, res) => {
 function topicsInfo(name) {
   const t = learning.vacancyTopics(store.outDir(name));
   if (!t) return null;
-  const list = t.topics.map((x) => ({ ...x, ...learning.status(x.slug), title_en: x.title_en, title_ru: x.title_ru }));
+  const list = t.topics.map((x) => ({ ...x, ...learning.status(x.slug), title_en: x.title_en, title_ru: x.title_ru, courses: courses.coursesOf(x.slug) }));
   // Темы собраны до учёта вакансии и ответов (нет gen) или ответов при подаче стало больше — подсказка «пересобери»
   const refresh = !t.gen ? 'old' : topicAnswers(name).length > (t.answers ?? 0) ? 'answers' : null;
   return { at: t.at, cv: t.cv, list, passed: list.filter((x) => x.passed).length, total: list.length, refresh };
@@ -1075,11 +1076,18 @@ function writeVideo(t, m, pick, retrying) {
 
 const addRejected = (old, add) => { const seen = new Set((old || []).map((x) => x.url)); return [...(old || []), ...add.filter((x) => !seen.has(x.url) && seen.add(x.url))]; };
 
+// W8 / C19: урок, видео, перевод и тест темы библиотеки — общие для вакансии и курса.
+// ctx: { target, topic: {slug, title_en, title_ru, why}, busy(kind), attach(kind, job), course? — контекст курса для урока, label? }
+const topicErr = (status, error) => Object.assign(new Error(error), { status });
+const vacCtx = (name, t) => ({ target: name, topic: t, busy: (k) => busy(store.app(name), k), attach: (k, j) => attach(name, k, j) });
+const sendTopicJob = (res, fn) => { try { const r = fn(); return Promise.resolve(r).then((x) => res.json(x?.id ? { jobId: x.id } : x)); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); } };
+
 // Повторный поиск видео: агент возвращает кандидатов JSON-ом, файл пишет сервер (в фоне агенту скрипты запрещены)
-function videoJob(name, t, bad, keep) {
+function videoJob(ctx, bad, keep) {
+  const t = ctx.topic;
   const metaFile = path.join(learning.dir(t.slug), 'meta.json');
   const m0 = learning.meta(t.slug) || {};
-  const job = runJob({ kind: 'lessonvideo', target: name,
+  const job = runJob({ kind: 'lessonvideo', target: ctx.target,
     prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: learning.videoRules(), rejected: hardRejected(m0) }),
     logFile: path.join(learning.dir(t.slug), 'agent-video.log'),
     onDone: async (j) => {
@@ -1094,74 +1102,71 @@ function videoJob(name, t, bad, keep) {
       } else writeVideo(t, m, pick, false);
     } });
   job.topic = t.slug;
-  attach(name, 'lessonvideo', job);
+  job.label = ctx.label;
+  ctx.attach('lessonvideo', job);
   return job;
 }
 
-app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req, res) => {
-  const name = store.safeName(req.params.name);
-  const t = vacancyTopic(name, req.params.slug);
-  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
-  const a = store.app(name);
-  if (busy(a, 'lesson')) return res.status(409).json({ error: 'урок по другой теме ещё готовится — дождись его' });
+function lessonJob(ctx) {
+  const t = ctx.topic;
+  if (ctx.busy('lesson')) throw topicErr(409, 'урок по другой теме ещё готовится — дождись его');
   const d = learning.dir(t.slug);
   fs.mkdirSync(d, { recursive: true });
   const lessonFile = path.join(d, 'lesson.en.md'), metaFile = path.join(d, 'meta.json');
   const before = fs.existsSync(lessonFile) ? fs.statSync(lessonFile).mtimeMs : 0;
   const job = runJob({
-    kind: 'lesson', target: name,
-    prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: name, why: t.why, rules: learning.videoRules() }),
+    kind: 'lesson', target: ctx.target,
+    prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: ctx.course ? null : ctx.target, why: t.why || {},
+      rules: learning.videoRules(), course: ctx.course || null }),
     logFile: path.join(d, 'agent-lesson.log'),
     onDone: async () => {
       if (!fs.existsSync(lessonFile) || fs.statSync(lessonFile).mtimeMs === before) throw new Error('агент не записал урок');
       fs.rmSync(path.join(d, 'lesson.ru.md'), { force: true }); // перевод старого урока больше не верен
       fs.rmSync(path.join(d, 'test-current.json'), { force: true });
+      fs.rmSync(path.join(d, 'review.json'), { force: true });
       const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+      if (ctx.course) m.courses = [...new Set([...(learning.meta(t.slug)?.courses || []), ...(m.courses || []), ctx.course.slug])];
       const pick = await pickVideo(m);
       writeVideo(t, m, pick, !pick.ok && pick.rejected.length > 0);
       // Ни одно не прошло — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
-      if (!pick.ok && pick.rejected.length) videoJob(name, t, pick.why, null);
+      if (!pick.ok && pick.rejected.length) videoJob(ctx, pick.why, null);
     },
   });
   job.topic = t.slug;
-  attach(name, 'lesson', job);
-  res.json({ jobId: job.id });
-}));
+  job.label = ctx.label;
+  ctx.attach('lesson', job);
+  return job;
+}
 
 // Другое видео к готовому уроку (старое длинное или не нашлось): поиск по фильтру профиля, урок не трогаем
-app.post('/api/vacancies/:name/topics/:slug/video', agentReady, wrap(async (req, res) => {
-  const name = store.safeName(req.params.name);
-  const t = vacancyTopic(name, req.params.slug);
-  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
-  if (busy(store.app(name), 'lessonvideo')) return res.status(409).json({ error: 'видео уже ищется' });
+async function anotherVideo(ctx) {
+  const t = ctx.topic;
+  if (ctx.busy('lessonvideo')) throw topicErr(409, 'видео уже ищется');
   const metaFile = path.join(learning.dir(t.slug), 'meta.json');
   const m = learning.meta(t.slug);
-  if (!m || !learning.lesson(t.slug, 'en')) return res.status(400).json({ error: 'сначала урок' });
+  if (!m || !learning.lesson(t.slug, 'en')) throw topicErr(400, 'сначала урок');
   // Сначала бесплатно: ссылки, которые раньше не прошли только по фильтру, — вдруг теперь проходят
   if (!m.video) {
     const again = (m.video_rejected || []).filter((x) => RULE_MISS.test(x.why || ''));
     const pick = again.length ? await pickVideo({ ...m, video_rejected: hardRejected(m), video: again[0], video_candidates: again.slice(1, 8) }) : null;
     if (pick?.ok) {
       writeVideo(t, { ...m, video_rejected: (m.video_rejected || []).filter((x) => x.url !== pick.video.url) }, { ...pick, rejected: [] }, false);
-      return res.json({ ok: true, rechecked: true });
+      return { ok: true, rechecked: true };
     }
   }
   const why = m.video ? 'нужно другое видео — по фильтру' : (m.video_status || 'видео не найдено');
   // Текущее видео — в отклонённые, чтобы агент не вернул его же
   if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: 'заменено вручную' }]) }, null, 2)}\n`);
-  const job = videoJob(name, t, why, m.video);
-  res.json({ jobId: job.id });
-}));
+  return videoJob(ctx, why, m.video);
+}
 
-app.post('/api/vacancies/:name/topics/:slug/translate', agentReady, wrap(async (req, res) => {
-  const name = store.safeName(req.params.name);
-  const t = vacancyTopic(name, req.params.slug);
-  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
-  if (busy(store.app(name), 'translate')) return res.status(409).json({ error: 'уже идёт' });
+function translateJob(ctx) {
+  const t = ctx.topic;
+  if (ctx.busy('translate')) throw topicErr(409, 'уже идёт');
   const text = learning.lesson(t.slug, 'en');
-  if (!text) return res.status(400).json({ error: 'урока ещё нет' });
+  if (!text) throw topicErr(400, 'урока ещё нет');
   const job = runJob({
-    kind: 'translate', target: name, system: prompts.TRANSLATE_SYSTEM, prompt: prompts.topicTranslate({ lessonText: text }),
+    kind: 'translate', target: ctx.target, system: prompts.TRANSLATE_SYSTEM, prompt: prompts.topicTranslate({ lessonText: text }),
     logFile: path.join(learning.dir(t.slug), 'translate.log'),
     onDone: async (j) => {
       const md = String(j.finalText || '').trim().replace(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/, '$1');
@@ -1170,28 +1175,39 @@ app.post('/api/vacancies/:name/topics/:slug/translate', agentReady, wrap(async (
     },
   });
   job.topic = t.slug;
-  attach(name, 'translate', job);
-  res.json({ jobId: job.id });
-}));
+  job.label = ctx.label;
+  ctx.attach('translate', job);
+  return job;
+}
 
-app.post('/api/vacancies/:name/topics/:slug/test', agentReady, wrap(async (req, res) => {
-  const name = store.safeName(req.params.name);
-  const t = vacancyTopic(name, req.params.slug);
-  if (!t) return res.status(404).json({ error: 'нет такой темы у вакансии' });
-  if (busy(store.app(name), 'topictest')) return res.status(409).json({ error: 'тест уже составляется' });
+function topicTestJob(ctx, lang) {
+  const t = ctx.topic;
+  if (ctx.busy('topictest')) throw topicErr(409, 'тест уже составляется');
   const text = learning.lesson(t.slug, 'en');
-  if (!text) return res.status(400).json({ error: 'сначала урок' });
+  if (!text) throw topicErr(400, 'сначала урок');
   const job = runJob({
-    kind: 'topictest', target: name, system: prompts.TEST_SYSTEM,
+    kind: 'topictest', target: ctx.target, system: prompts.TEST_SYSTEM,
     prompt: prompts.topicTest({ lessonText: text, video: learning.meta(t.slug)?.video, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
-      lang: req.body?.lang === 'ru' ? 'ru' : 'en' }),
+      lang: lang === 'ru' ? 'ru' : 'en', numeric: ctx.course?.kind === 'domain' }),
     logFile: path.join(learning.dir(t.slug), 'test.log'),
     onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText))),
   });
   job.topic = t.slug;
-  attach(name, 'topictest', job);
-  res.json({ jobId: job.id });
-}));
+  job.label = ctx.label;
+  ctx.attach('topictest', job);
+  return job;
+}
+
+const vacTopicCtx = (req, res) => {
+  const name = store.safeName(req.params.name);
+  const t = vacancyTopic(name, req.params.slug);
+  if (!t) { res.status(404).json({ error: 'нет такой темы у вакансии' }); return null; }
+  return vacCtx(name, t);
+};
+app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => lessonJob(c)); }));
+app.post('/api/vacancies/:name/topics/:slug/video', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => anotherVideo(c)); }));
+app.post('/api/vacancies/:name/topics/:slug/translate', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => translateJob(c)); }));
+app.post('/api/vacancies/:name/topics/:slug/test', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => topicTestJob(c, req.body?.lang)); }));
 
 // Урок пишет агент по материалам из интернета — в разметке оставляем только текст, без скриптов и встраиваний
 const safeHtml = (h) => String(h).replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1>/gi, '').replace(/<(script|style|iframe|object|embed|form|input)[^>]*>/gi, '')
@@ -1206,6 +1222,7 @@ app.get('/api/topics/:slug', wrap(async (req, res) => {
   const m = learning.meta(slug);
   res.json({ status: learning.status(slug), meta: m ? { video: m.video, video_status: m.video_status, sources: m.sources || [], cards: m.cards || [] } : null,
     lang, html: md ? safeHtml(marked(md)) : '', test: learning.publicTest(slug), last: learning.attempts(slug).slice(-1)[0] || null,
+    review: courses.publicReview(slug) ? { ...courses.publicReview(slug), html: safeHtml(marked(courses.publicReview(slug).summary)) } : null, reviewJob: reviewJobs.get(slug) ? publicJob(jobs.get(reviewJobs.get(slug))) : null, courses: courses.coursesOf(slug),
     insights: insights.rank({ text: `${m?.title_en || ''} ${slug.replace(/-/g, ' ')}`, tags: [slug] }, 5, { loose: true }) });
 }));
 
@@ -2972,6 +2989,187 @@ app.get('/api/agent/usage', wrap(async (req, res) => {
 
 app.put('/api/agent/budget', wrap(async (req, res) => {
   try { res.json(runs.setBudget(req.body?.monthlyUsd)); } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
+// ---------- C19 · обучение: курсы (docs/specs/44-courses.md) ----------
+
+const courseJobs = new Map(); // slug курса → { kind: jobId }
+const reviewJobs = new Map(); // slug темы → jobId повторения
+const courseJob = (slug, kind) => { const id = courseJobs.get(slug)?.[kind]; const j = id && jobs.get(id); return j ? publicJob(j) : null; };
+const courseBusy = (slug, kind) => ['running', 'queued'].includes(courseJob(slug, kind)?.state);
+const setCourseJob = (slug, kind, job) => courseJobs.set(slug, { ...(courseJobs.get(slug) || {}), [kind]: job.id });
+const cErr = (res, e) => res.status(e.status || 500).json({ error: e.message });
+const COURSE_KINDS = ['outline', 'outlinematch', 'courseexam', 'lesson', 'lessonvideo', 'translate', 'topictest'];
+
+// «Все темы»: библиотека, статус, курсы и вакансии, где тема встречается
+function allTopics() {
+  const byVac = {};
+  for (const n of fs.existsSync(path.join(ROOT, 'output')) ? fs.readdirSync(path.join(ROOT, 'output')) : []) {
+    const t = learning.vacancyTopics(path.join(ROOT, 'output', n));
+    for (const x of t?.topics || []) (byVac[x.slug] = byVac[x.slug] || []).push(n);
+  }
+  const cs = courses.list().map((c) => ({ ...c, lessons: courses.lessons(courses.get(c.slug)).map((l) => l.slug) }));
+  return learning.library().map((t) => ({ ...learning.status(t.slug), title_en: t.title_en, title_ru: learning.meta(t.slug)?.title_ru || '',
+    courses: cs.filter((c) => c.lessons.includes(t.slug)).map((c) => ({ slug: c.slug, title: c.title })), vacancies: byVac[t.slug] || [] }))
+    .sort((a, b) => Number(a.passed) - Number(b.passed) || a.title_en.localeCompare(b.title_en));
+}
+
+app.get('/api/learn', wrap(async (req, res) => {
+  res.json({ courses: courses.list(), topics: allTopics(), kinds: courses.KINDS, levels: courses.LEVELS });
+}));
+
+function courseView(slug) {
+  const c = courses.get(slug);
+  const p = courses.progress(c);
+  return { course: c, progress: p, exam: courses.publicExam(slug), examAttempts: courses.readAttempts(slug).map(({ questions, ...r }) => r),
+    jobs: Object.fromEntries(COURSE_KINDS.map((k) => [k, courseJob(slug, k)]).filter(([, j]) => j)), kinds: courses.KINDS, levels: courses.LEVELS };
+}
+app.get('/api/learn/courses/:slug', wrap(async (req, res) => {
+  try { res.json(courseView(req.params.slug)); } catch (e) { cErr(res, e); }
+}));
+
+// Структура: агент с поиском пишет outline.json, сервер проверяет и сверяет уроки с библиотекой
+function runOutline(slug) {
+  const c = courses.get(slug);
+  const dir = courses.cdir(slug);
+  const out = path.join(dir, 'outline.json');
+  fs.rmSync(out, { force: true });
+  const job = runJob({ kind: 'courseoutline', target: `course:${slug}`,
+    prompt: prompts.courseOutline({ course: c, materials: courses.materialRefs(slug), library: learning.library(), out: path.relative(ROOT, out) }),
+    logFile: path.join(dir, 'outline.log'),
+    onDone: async () => {
+      let raw;
+      try { raw = JSON.parse(fs.readFileSync(out, 'utf8')); } catch { throw new Error('агент не записал outline.json'); }
+      const o = courses.normOutline(raw);
+      if (o.modules.length < 2) throw new Error(`в структуре ${o.modules.length} модулей`);
+      const cur = courses.get(slug);
+      courses.save(slug, { ...cur, modules: o.modules, sources: o.sources, glossary: o.glossary, outlineNote: String(raw.note || '').slice(0, 500), outlineAt: new Date().toISOString() });
+      const ls = courses.lessons(courses.get(slug)).map((l) => ({ slug: l.slug, title_en: l.title_en, why: { requirement: l.goal } }));
+      courses.applyMatches(slug, await matchTopics(`course:${slug}`, ls, dir));
+    } });
+  job.label = c.title;
+  setCourseJob(slug, 'outline', job);
+  return job;
+}
+
+app.post('/api/learn/courses', agentReady, wrap(async (req, res) => {
+  let c;
+  try { c = courses.create(req.body || {}); } catch (e) { return cErr(res, e); }
+  runOutline(c.slug);
+  res.json({ slug: c.slug });
+}));
+app.post('/api/learn/courses/:slug/outline', agentReady, wrap(async (req, res) => {
+  try {
+    if (courseBusy(req.params.slug, 'outline')) return res.status(409).json({ error: 'структура уже собирается' });
+    res.json({ jobId: runOutline(req.params.slug).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.put('/api/learn/courses/:slug/modules', wrap(async (req, res) => {
+  try { res.json(courses.setModules(req.params.slug, req.body?.modules)); } catch (e) { cErr(res, e); }
+}));
+app.patch('/api/learn/courses/:slug', wrap(async (req, res) => {
+  try {
+    const c = courses.get(req.params.slug);
+    const b = req.body || {};
+    for (const k of ['title', 'goal', 'topic']) if (b[k] !== undefined && String(b[k]).trim()) c[k] = String(b[k]).trim().slice(0, 400);
+    if (b.hours_per_week !== undefined) c.hours_per_week = Math.max(0.5, Number(b.hours_per_week) || c.hours_per_week);
+    if (b.weeks !== undefined) c.weeks = Number(b.weeks) > 0 ? Number(b.weeks) : null;
+    if (b.level && courses.LEVELS[b.level]) c.level = b.level;
+    if (b.status === 'active' && c.status === 'draft') { if (!courses.lessons(c).length) return res.status(400).json({ error: 'в курсе нет уроков' }); c.status = 'active'; c.approved = new Date().toISOString(); }
+    if (b.status === 'draft') c.status = 'draft';
+    courses.save(c.slug, c);
+    res.json(c);
+  } catch (e) { cErr(res, e); }
+}));
+app.delete('/api/learn/courses/:slug', wrap(async (req, res) => {
+  try { fs.rmSync(courses.cdir(req.params.slug), { recursive: true, force: true }); res.json({ ok: true }); } catch (e) { cErr(res, e); }
+}));
+
+// Материалы: файл (текст PDF / DOCX — в _text/ для агента) или ссылка
+app.post('/api/learn/courses/:slug/materials', express.raw({ type: 'application/octet-stream', limit: '30mb' }), wrap(async (req, res) => {
+  try {
+    if (!req.body?.length) return res.status(400).json({ error: 'пустой файл' });
+    const name = courses.addMaterial(req.params.slug, decodeURIComponent(String(req.headers['x-filename'] || '')), req.body);
+    if (/\.(pdf|docx)$/i.test(name)) {
+      const td = path.join(courses.matDir(req.params.slug), '_text');
+      fs.mkdirSync(td, { recursive: true });
+      await new Promise((resolve) => execFile(path.join(ROOT, '.venv', 'bin', 'python'), ['scorer/cv_text.py', '--file', path.join(courses.matDir(req.params.slug), name),
+        '--out', path.join(td, `${name}.txt`), '--json'], { cwd: ROOT, timeout: 120000 }, resolve));
+    }
+    res.json({ name });
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/learn/courses/:slug/links', wrap(async (req, res) => {
+  try { courses.addLink(req.params.slug, req.body?.url, req.body?.title); res.json({ ok: true }); } catch (e) { cErr(res, e); }
+}));
+app.delete('/api/learn/courses/:slug/materials/:i', wrap(async (req, res) => {
+  try { courses.removeMaterial(req.params.slug, Number(req.params.i)); res.json({ ok: true }); } catch (e) { cErr(res, e); }
+}));
+
+// Урок курса — та же тема библиотеки, но с контекстом курса
+function courseCtx(req, res) {
+  try {
+    const slug = req.params.slug;
+    const c = courses.get(slug);
+    const l = courses.lessons(c).find((x) => x.slug === req.params.topic);
+    if (!l) { res.status(404).json({ error: 'нет такого урока в курсе' }); return null; }
+    return { target: `course:${slug}`, label: c.title, topic: { slug: l.slug, title_en: l.title_en, title_ru: l.title_ru, why: { requirement: l.goal } },
+      busy: (k) => courseBusy(slug, k), attach: (k, j) => setCourseJob(slug, k, j), course: courses.lessonContext(slug, l.slug) };
+  } catch (e) { cErr(res, e); return null; }
+}
+app.post('/api/learn/courses/:slug/topics/:topic/lesson', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => lessonJob(c)); }));
+app.post('/api/learn/courses/:slug/topics/:topic/video', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => anotherVideo(c)); }));
+app.post('/api/learn/courses/:slug/topics/:topic/translate', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => translateJob(c)); }));
+app.post('/api/learn/courses/:slug/topics/:topic/test', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => topicTestJob(c, req.body?.lang)); }));
+
+// Пробный экзамен: собирается один раз по текстам всех уроков, проверяется на сервере, с таймером
+app.post('/api/learn/courses/:slug/exam', agentReady, wrap(async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    const c = courses.get(slug);
+    if (courseBusy(slug, 'courseexam')) return res.status(409).json({ error: 'экзамен уже составляется' });
+    const ls = courses.lessons(c).map((l) => ({ slug: l.slug, title: l.title_en, text: learning.lesson(l.slug, 'en') }));
+    const missing = ls.filter((l) => !l.text).length;
+    if (missing) return res.status(400).json({ error: `сначала уроки: не создано ${missing}` });
+    const job = runJob({ kind: 'courseexam', target: `course:${slug}`, system: prompts.EXAM_SYSTEM,
+      prompt: prompts.courseExam({ course: c, lessons: ls, n: c.exam.questions, past: courses.pastExamQuestions(slug) }),
+      logFile: path.join(courses.cdir(slug), 'exam.log'),
+      onDone: async (j) => courses.saveExam(slug, courses.normExam(oneJSON(j.finalText), c)) });
+    job.label = c.title;
+    setCourseJob(slug, 'courseexam', job);
+    res.json({ jobId: job.id });
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/learn/courses/:slug/exam/start', wrap(async (req, res) => {
+  try { res.json(courses.startExam(req.params.slug)); } catch (e) { cErr(res, e); }
+}));
+app.post('/api/learn/courses/:slug/exam/submit', wrap(async (req, res) => {
+  try {
+    const r = courses.gradeExam(req.params.slug, req.body?.answers || {});
+    if (r.passed) events.add({ type: 'course', title: `Экзамен сдан: ${Math.round(r.score * 100)}%`, text: courses.get(req.params.slug).title, link: `#/learn/c/${req.params.slug}` });
+    res.json(r);
+  } catch (e) { cErr(res, e); }
+}));
+
+// Повторение сданной темы: выжимка и 5 вопросов, один раз на урок (Haiku); на «сдано» не влияет
+app.post('/api/topics/:slug/review', agentReady, wrap(async (req, res) => {
+  const slug = String(req.params.slug);
+  if (!learning.slugOk(slug)) return res.status(400).json({ error: 'плохой slug' });
+  const text = learning.lesson(slug, 'en');
+  if (!text) return res.status(400).json({ error: 'урока нет' });
+  const cur = reviewJobs.get(slug) && jobs.get(reviewJobs.get(slug));
+  if (cur && ['running', 'queued'].includes(cur.state)) return res.status(409).json({ error: 'повторение уже готовится' });
+  const job = runJob({ kind: 'topicreview', target: slug, system: prompts.REVIEW_SYSTEM,
+    prompt: prompts.topicReview({ lessonText: text, past: learning.pastQuestions(slug) }), logFile: path.join(learning.dir(slug), 'review.log'),
+    onDone: async (j) => { fs.writeFileSync(courses.reviewFile(slug), `${JSON.stringify(courses.normReview(oneJSON(j.finalText)), null, 2)}\n`); } });
+  job.label = learning.meta(slug)?.title_en || slug;
+  reviewJobs.set(slug, job.id);
+  res.json({ jobId: job.id });
+}));
+app.post('/api/topics/:slug/review/submit', wrap(async (req, res) => {
+  const slug = String(req.params.slug);
+  if (!learning.slugOk(slug)) return res.status(400).json({ error: 'плохой slug' });
+  try { res.json(courses.gradeReview(slug, req.body?.answers || {})); } catch (e) { cErr(res, e); }
 }));
 
 // ---------- C15 · моя версия CV (docs/specs/40-my-cv-version.md) ----------

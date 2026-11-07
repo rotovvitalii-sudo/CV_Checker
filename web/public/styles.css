@@ -867,3 +867,14 @@ a.test-row:hover { border-color: var(--accent); }
 /* C16 · своё письмо */
 .letter-mine { margin-top: 12px; }
 .letter-mine .error:empty { display: none; }
+
+/* C19 · обучение */
+.c-bar { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; }
+.c-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.c-struct { display: flex; flex-direction: column; gap: 14px; }
+.c-mod { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.c-mod-title { font-weight: 600; flex: 1; min-width: 0; }
+.c-lessons { margin: 8px 0 4px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.c-les input[data-lt] { flex: 1; min-width: 200px; }
+.c-goal { width: 100%; margin-top: 4px; }
+.tp-review { margin: 12px 0; }
