@@ -27,6 +27,7 @@ const money = require('./money');
 const answerLib = require('./answer-lib');
 const answerFacts = require('./answer-facts');
 const hrq = require('./hrq');
+const reqCases = require('./req-cases');
 const tests = require('./test-tasks');
 const cvv = require('./cv-versions');
 const courses = require('./courses');
@@ -1885,7 +1886,7 @@ app.get('/api/cases', wrap(async (req, res) => {
     drafts: cases.drafts().map((m) => draftView(m.id)),
     suggestions: sug.filter((s) => s.state === 'new'), suggestionsDone: sug.filter((s) => s.state !== 'new').length,
     gaps: await gapSummary(), newDictation: cases.newDictation(), voice: voiceStatus(),
-    scanJob: j ? publicJob(j) : null, insightsCount: insights.list().length,
+    scanJob: j ? publicJob(j) : null, insightsCount: insights.list().length, reqCasesCount: reqCases.library().length,
   });
 }));
 
@@ -2453,6 +2454,206 @@ app.post('/api/answer-facts/:key/retry', agentReady, wrap(async (req, res) => {
   if (r.state === 'running') return res.status(409).json({ error: 'уже разбирается' });
   answerFacts.set(String(req.params.key), { state: 'error' });
   res.json(startAnswerFacts({ vacancy: r.vacancy, origin: r.origin, question: r.question, answer: r.answer, rawFile: r.raw, note: r.note }) ? { ok: true } : { ok: false });
+}));
+
+// ---------- C20 · требование → кейс (docs/specs/45-requirement-cases.md) ----------
+// Строки требований и хранение — без агента; матч и «Предложить кейс» — по одному ходу Haiku на строку
+const vacancyMd = (name) => readText(path.join(store.VACANCIES, `${name}.md`));
+const REQ_Q = (req) => `Требование вакансии: ${req}`;
+function reqData(name) {
+  const dir = store.outDir(name);
+  let data = reqCases.read(dir);
+  if (!data) {
+    data = reqCases.initial(vacancyMd(name), store.app(name).fit);
+    reqCases.save(dir, data);
+  }
+  return { dir, data };
+}
+// Вид для интерфейса: состояние задач по каждой строке и факты для базы (C13) у сохранённых
+function reqView(name) {
+  const dir = store.outDir(name);
+  reqData(name);
+  const v = reqCases.view(dir, name);
+  for (const it of v.items) {
+    for (const k of ['match', 'suggest']) {
+      const j = it[k]?.jobId ? jobs.get(it[k].jobId) : null;
+      if (it[k]?.state === 'running' && (!j || !['queued', 'running'].includes(j.state))) it[k] = { ...it[k], state: j?.error ? 'error' : 'lost', error: j?.error || 'задача прервалась — запусти ещё раз' };
+    }
+    it.facts = it.factsKey ? answerFacts.get(it.factsKey) : null;
+  }
+  return v;
+}
+function reqItem(name, id) {
+  const { dir, data } = reqData(name);
+  const it = data.items.find((x) => x.id === id);
+  if (!it) throw Object.assign(new Error('нет такой строки'), { status: 404 });
+  return { dir, data, it };
+}
+// Обновить строку по свежей копии файла: пока шла задача, кандидат мог править другие строки
+function reqPatch(name, id, fn) {
+  const dir = store.outDir(name);
+  const data = reqCases.read(dir);
+  const it = data?.items.find((x) => x.id === id);
+  if (!it) return null;
+  fn(it, data);
+  reqCases.save(dir, data);
+  return it;
+}
+// В базу: общая библиотека + разбор фактов (C13) для развёрнутого кейса
+function reqToBase(name, it) {
+  reqCases.toLibrary(name, it);
+  const f = startAnswerFacts({ vacancy: name, origin: 'reqcase', question: REQ_Q(it.req), answer: it.text,
+    note: 'Это история кандидата под конкретное требование вакансии.' });
+  return { saved: new Date().toISOString(), factsKey: f ? answerFacts.key(name, REQ_Q(it.req), it.text.trim()) : it.factsKey || null };
+}
+
+app.get('/api/vacancies/:name/reqcases', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  if (lacksText(name)) return res.status(400).json({ error: NO_TEXT });
+  res.json(reqView(name));
+}));
+
+// «Собрать строки заново»: строки с текстом кейса и свои остаются, новые строки вакансии добавляются
+app.post('/api/vacancies/:name/reqcases/rebuild', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  if (lacksText(name)) return res.status(400).json({ error: NO_TEXT });
+  const { dir, data } = reqData(name);
+  const fresh = reqCases.initial(vacancyMd(name), store.app(name).fit);
+  const keep = data.items.filter((x) => x.text.trim() || x.manual || x.edited);
+  const have = new Set(keep.map((x) => x.req.toLowerCase().trim()));
+  data.items = [...keep, ...fresh.items.filter((x) => !have.has(x.req.toLowerCase().trim()))];
+  data.source = fresh.source;
+  data.at = fresh.at;
+  reqCases.save(dir, data);
+  res.json(reqView(name));
+}));
+
+app.post('/api/vacancies/:name/reqcases/items', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const text = String(req.body?.req || '').trim();
+  if (!text) return res.status(400).json({ error: 'впиши требование' });
+  const { dir, data } = reqData(name);
+  data.items.push(reqCases.newItem({ req: text, bucket: req.body?.bucket || 'other', manual: true }));
+  reqCases.save(dir, data);
+  res.json(reqView(name));
+}));
+
+app.patch('/api/vacancies/:name/reqcases/items/:id', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  const b = req.body || {};
+  if (typeof b.req === 'string') {
+    if (!b.req.trim()) return res.status(400).json({ error: 'требование не может быть пустым' });
+    if (b.req.trim() !== it.req) { it.req = reqCases.clip(b.req, 400); it.edited = true; }
+  }
+  if (typeof b.text === 'string') it.text = b.text.slice(0, 6000);
+  if (typeof b.hidden === 'boolean') it.hidden = b.hidden;
+  if (reqCases.BUCKETS.includes(b.bucket)) it.bucket = b.bucket;
+  if (b.card === null || (typeof b.card === 'string' && cases.exists(b.card))) it.card = b.card;
+  if (b.move === -1 || b.move === 1) {
+    const i = data.items.indexOf(it), j = i + b.move;
+    if (j >= 0 && j < data.items.length) [data.items[i], data.items[j]] = [data.items[j], data.items[i]];
+  }
+  reqCases.save(dir, data);
+  // Уже в базе — запись библиотеки обновляется вместе с текстом (без агента)
+  if (it.saved && (typeof b.text === 'string' || typeof b.req === 'string') && it.text.trim()) reqCases.toLibrary(name, it);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/vacancies/:name/reqcases/items/:id', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  data.items = data.items.filter((x) => x !== it);
+  reqCases.save(dir, data);
+  res.json(reqView(name));
+}));
+
+app.post('/api/vacancies/:name/reqcases/items/:id/match', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  if (typeof req.body?.text === 'string') it.text = req.body.text.slice(0, 6000);
+  if (reqCases.words(it.text) < 8) return res.status(400).json({ error: 'кейс слишком короткий — расскажи хотя бы пару фраз' });
+  if (it.match?.state === 'running' && ['queued', 'running'].includes(jobs.get(it.match.jobId)?.state)) return res.status(409).json({ error: 'матч уже считается' });
+  const text = it.text, reqText = it.req, id = it.id;
+  const job = runJob({ kind: 'reqmatch', target: name, system: prompts.REQ_MATCH_SYSTEM,
+    prompt: prompts.reqMatch({ req: reqText, text, vacancy: reqCases.vacancyBody(vacancyMd(name)), title: name }),
+    logFile: path.join(store.DATA, 'req-cases', `${id}-match.log`),
+    onDone: async (j) => {
+      const m = reqCases.checkMatch(oneJSON(j.finalText));
+      const after = reqPatch(name, id, (x) => {
+        x.attempts.push({ at: new Date().toISOString(), text, req: reqText, ...m });
+        x.attempts = x.attempts.slice(-12);
+        x.match = { state: 'done', at: new Date().toISOString() };
+      });
+      // Матч ≥ порога — сам в базу (библиотека + факты C13); дальше текст в базе обновляется при правке
+      if (after && m.score >= reqCases.READY && after.text.trim() === text.trim()) {
+        const r = reqToBase(name, after);
+        reqPatch(name, id, (x) => Object.assign(x, r));
+      }
+    } });
+  job.listeners.add((ev) => { if (ev.done && job.error) reqPatch(name, id, (x) => { x.match = { state: 'error', error: String(job.error).slice(0, 200) }; }); });
+  it.match = { state: 'running', jobId: job.id, at: new Date().toISOString() };
+  reqCases.save(dir, data);
+  res.json({ ok: true, jobId: job.id });
+}));
+
+app.post('/api/vacancies/:name/reqcases/items/:id/suggest', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  if (it.suggest?.state === 'running' && ['queued', 'running'].includes(jobs.get(it.suggest.jobId)?.state)) return res.status(409).json({ error: 'уже подбираю' });
+  const fit = store.app(name).fit || {};
+  const md = vacancyMd(name);
+  let near = reqCases.rankCards(it.req, '', 5);
+  // Карточка-опора фита — всегда в выборке: по словам английского требования её можно не найти
+  if (fit.anchor_card && cases.exists(fit.anchor_card) && !near.some((c) => c.id === fit.anchor_card)) {
+    near = [...near.slice(0, 4), { id: fit.anchor_card, text: readText(path.join(CARDS_DIR, `${fit.anchor_card}.md`)).slice(0, 4000) }];
+  }
+  const id = it.id;
+  const job = runJob({ kind: 'reqsuggest', target: name, system: prompts.REQ_SUGGEST_SYSTEM,
+    prompt: prompts.reqSuggest({ req: it.req, title: name, langName: hrq.LANGS[hrq.lang(md)] || 'английском', pain: fit.pain || '',
+      index: readText(path.join(CARDS_DIR, 'INDEX.md')), cards: near }),
+    logFile: path.join(store.DATA, 'req-cases', `${id}-suggest.log`),
+    onDone: async (j) => {
+      const r = reqCases.checkSuggest(oneJSON(j.finalText));
+      reqPatch(name, id, (x) => { x.suggest = { state: 'done', ...r }; });
+    } });
+  job.listeners.add((ev) => { if (ev.done && job.error) reqPatch(name, id, (x) => { x.suggest = { state: 'error', error: String(job.error).slice(0, 200) }; }); });
+  it.suggest = { state: 'running', jobId: job.id, at: new Date().toISOString() };
+  reqCases.save(dir, data);
+  res.json({ ok: true, jobId: job.id });
+}));
+
+// «Сохранить в базу» вручную (матч ниже порога или без матча) и «убрать из базы»
+app.post('/api/vacancies/:name/reqcases/items/:id/save', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  if (typeof req.body?.text === 'string') it.text = req.body.text.slice(0, 6000);
+  if (reqCases.words(it.text) < 8) return res.status(400).json({ error: 'кейс слишком короткий' });
+  Object.assign(it, reqToBase(name, it));
+  reqCases.save(dir, data);
+  res.json(reqView(name));
+}));
+app.delete('/api/vacancies/:name/reqcases/items/:id/save', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const { dir, data, it } = reqItem(name, String(req.params.id));
+  reqCases.removeFromLibrary(`${name}#${it.id}`);
+  it.saved = null;
+  reqCases.save(dir, data);
+  res.json(reqView(name));
+}));
+
+// «База кейсов → Под требования»: вся библиотека
+app.get('/api/req-cases', wrap(async (req, res) => {
+  const list = reqCases.library().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  res.json({ items: list, cards: cases.list().map((c) => ({ id: c.id, company: c.company })), threshold: reqCases.READY });
+}));
+app.delete('/api/req-cases/:id', wrap(async (req, res) => {
+  const id = String(req.params.id);
+  const n = reqCases.removeFromLibrary(id);
+  // Строка вакансии теряет отметку «в базе»
+  const [vac, itemId] = id.split('#');
+  try { reqPatch(store.safeName(vac), itemId, (x) => { x.saved = null; }); } catch { /* вакансию могли удалить */ }
+  res.json({ ok: !!n });
 }));
 
 // C9: на какие карточки опираются фит, CV и письмо

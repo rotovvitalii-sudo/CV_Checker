@@ -194,7 +194,7 @@ function courseExamHtml(d) {
   const allLessons = p.lessons.every((l) => l.hasLesson);
   const res = examResult?.slug === c.slug ? examResult : null;
   let body;
-  if (jobBusy(j) || j?.state === 'error') body = courseJobBox(j, COURSE_JOB_LABEL.courseexam);
+  if (jobBusy(j)) body = courseJobBox(j, COURSE_JOB_LABEL.courseexam);
   else if (e?.started) {
     body = `<form id="exForm" class="tp-form"><p class="row" style="justify-content:space-between"><strong>Идёт экзамен</strong><span class="mono" id="exTimer"></span></p>
       ${e.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}</legend>${q.options.map((o, k) => `<label class="tp-opt"><input type="radio" name="${esc(q.id)}" value="${k}" ${examAnswers[q.id] === k ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}
@@ -211,7 +211,7 @@ function courseExamHtml(d) {
       ${res.wrong.length ? `<details><summary class="small">Ошибки · ${res.wrong.length}</summary><ol class="tp-wrong">${res.wrong.map((w) => `<li><strong>${esc(w.q)}</strong>
         <div class="small">Твой ответ: ${w.chosen != null ? esc(w.options[w.chosen]) : '—'} · верно: <strong>${esc(w.options[w.correct])}</strong></div><div class="muted small">${esc(w.explain)}</div></li>`).join('')}</ol></details>` : ''}`
       : last ? `<p class="muted small" style="margin:0">Последняя попытка: ${Math.round(last.score * 100)}% за ${last.minutes} мин${last.passed ? ' — сдан' : ''}. Попыток: ${d.examAttempts.length}.</p>` : ''}
-    ${body}</section>`;
+    ${j?.state === 'error' ? courseJobBox(j, '') : ''}${body}</section>`;
 }
 
 function courseMaterialsHtml(d) {

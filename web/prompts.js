@@ -509,6 +509,59 @@ ${cards.map((c) => `=== ${c.id} ===\n${c.text}`).join('\n\n') || '—'}
 Верни JSON: {"facts": [{"fact": "…", "quote": "…", "card": null, "conflict": null}], "story": null, "insight": false}`;
 }
 
+// ---------- C20 · требование → кейс (docs/specs/45-requirement-cases.md) ----------
+const REQ_MATCH_SYSTEM = 'Ты строгий нанимающий менеджер. Оцениваешь, насколько история кандидата подтверждает одно требование вакансии. Не хвалишь и не переписываешь текст за кандидата. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function reqMatch({ req, text, vacancy, title }) {
+  return `Вакансия: ${title}
+Текст вакансии (для контекста):
+"""
+${String(vacancy || '').slice(0, 4000)}
+"""
+
+Требование, которое проверяем: «${req}»
+
+Кейс кандидата (возможны ошибки распознавания речи, язык любой):
+"""
+${String(text).slice(0, 5000)}
+"""
+
+Оцени по четырём частям (целые числа):
+- "relevance" 0–40 — это опыт именно того, что требуют (не смежного). Опыт другого рода — не выше 14.
+- "evidence" 0–25 — есть ли результат и цифры: что изменилось, на сколько, за какой срок.
+- "ownership" 0–20 — видно, что сделал сам кандидат (решения, действия), а не «мы» или команда.
+- "scale" 0–15 — масштаб и контекст: пользователи, деньги, команда, рынок, сложность — сопоставимо с этой ролью.
+"hit" — 1–4 коротких пункта по-русски: что в кейсе попадает в требование.
+"missing" — 1–4 пункта по-русски, ВОПРОСАМИ к кандидату о том, чего не хватает («Сколько было учеников?», «Что ты решил сам?»). Не предлагай готовых фраз и не додумывай факты.
+"verdict" — одна фраза по-русски: главное, что держит оценку.
+
+Верни JSON: {"parts": {"relevance": 0, "evidence": 0, "ownership": 0, "scale": 0}, "hit": ["…"], "missing": ["…"], "verdict": "…"}`;
+}
+
+const REQ_SUGGEST_SYSTEM = 'Ты подбираешь кандидату историю из его базы кейсов под требование вакансии. Пользуешься только фактами из карточек, ничего не додумываешь и не округляешь. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+
+function reqSuggest({ req, title, langName, index, cards, pain }) {
+  return `Вакансия: ${title}${pain ? `\nЧто болит у компании: ${pain}` : ''}
+Требование: «${req}»
+
+Реестр карточек базы кейсов:
+${String(index || '').slice(0, 6000)}
+
+Карточки целиком (единственный источник фактов):
+${cards.map((c) => `=== ${c.id} ===\n${c.text}`).join('\n\n') || '—'}
+
+Задача: выбери до 2 карточек из тех, что даны целиком, которые лучше всего подтверждают требование. Для каждой:
+- "card" — id карточки;
+- "why" — по-русски, одной-двумя фразами: что именно в карточке матчится с требованием;
+- "covers" — по-русски: какая часть требования закрыта;
+- "not_covers" — по-русски: что из требования карточка не закрывает (пусто, если закрывает всё);
+- "draft" — история на ${langName} от первого лица, 60–120 слов: ситуация → что сделал сам → результат. Только факты этой карточки;
+  каждое число — ровно как в карточке (не пересчитывай, не округляй, не переводи цифры в слова). Нет фактов под требование — пустая строка.
+Если ни одна карточка не подтверждает требование по существу — "options": [] и "hint" по-русски: о чём надиктовать новый кейс.
+
+Верни JSON: {"options": [{"card": "…", "why": "…", "covers": "…", "not_covers": "…", "draft": "…"}], "hint": ""}`;
+}
+
 // ---------- W8 · углубиться в темы (docs/specs/33-interview-topics.md) ----------
 const TOPICS_SYSTEM = 'Ты помогаешь кандидату подготовиться к собеседованию: выбираешь темы для освежения знаний. Отвечай только одним JSON-объектом без пояснений и без markdown.';
 
@@ -816,5 +869,5 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
  "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
 }
 
-module.exports = { courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+module.exports = { reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

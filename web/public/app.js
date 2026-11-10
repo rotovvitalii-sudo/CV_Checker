@@ -450,7 +450,7 @@ function jobBlock(job) {
   const head = active
     ? `<div class="running"><span class="spin"></span>${job.state === 'queued' ? 'в очереди' : `идёт: ${STEP_LABELS[job.kind]}`} <span class="muted" data-elapsed="${job.started || job.created}"></span></div>`
     : `<p class="error">Ошибка: ${esc(job.error)}</p>`;
-  return `${head}<div class="feed" data-feed="${job.id}"></div>`;
+  return active ? `${head}<div class="feed" data-feed="${job.id}"></div>` : head;
 }
 
 function renderDetail() {
@@ -485,6 +485,7 @@ function renderDetail() {
     ${sendBlock(d)}
     ${processBlock(d) || ((d.testTasks || []).length ? `<div class="card">${testTasksLine(d)}</div>` : '')}
     ${offerBlock(d)}
+    ${reqBlock(d)}
     ${interviewBlock(d)}
     ${agentUsageLine(d)}
 
@@ -975,6 +976,7 @@ function bindDetail() {
   bindSendBlock(d);
   bindProcess(d);
   bindInterview(d);
+  bindReq(d); // C20
   bindOffer(d);
   bindExportName(d);
   $('#reveal').addEventListener('click', () => api(`/api/vacancies/${enc(d.name)}/reveal`, { method: 'POST' }));
@@ -1824,8 +1826,8 @@ function renderTopic(d, t, data) {
   const insBlock = (data.insights || []).length ? `<section><h4>Твои инсайты по теме</h4><ul class="tight small">${data.insights.map((i) => `<li><strong>${esc(i.title)}</strong> — ${esc(i.essence.replace(/^- /gm, '').replace(/\n+/g, ' · '))}${i.en ? `<div class="muted">${esc(i.en)}</div>` : ''}</li>`).join('')}</ul>
       <p class="muted small" style="margin:0"><a href="#/cases/insights">все инсайты</a></p></section>` : '';
   if (!st.hasLesson) {
-    return (jobBusy(jl) || jl?.state === 'error' ? jobBlock(jl)
-      : `<div class="row"><button type="button" class="primary small" id="tpLesson">Создать урок</button>
+    return (jobBusy(jl) ? jobBlock(jl)
+      : `${jl?.state === 'error' ? jobBlock(jl) : ''}<div class="row"><button type="button" class="primary small" id="tpLesson">${jl?.state === 'error' ? 'Повторить' : 'Создать урок'}</button>
         <span class="hint" style="margin:0">Агент ищет материалы и видео и пишет урок на английском: ≈ $0.3–0.5, 1–3 минуты.</span></div>`) + insBlock;
   }
   const m = data.meta || {};
@@ -1872,8 +1874,8 @@ function renderTopic(d, t, data) {
       ${test ? `<form id="tpForm" class="tp-form">${test.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}${q.from === 'video' ? ' <span class="chip">видео</span>' : ''}</legend>
           ${q.options.map((o, k) => `<label class="tp-opt"><input type="radio" name="${esc(q.id)}" value="${k}" ${topicAnswers[q.id] === k ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}
           <div class="row"><button type="submit" class="primary small" id="tpSubmit">Проверить</button><span class="hint" style="margin:0" id="tpLeft"></span></div></form>`
-        : jobBusy(jt) || jt?.state === 'error' ? jobBlock(jt)
-        : `<div class="row"><button type="button" class="${st.passed ? 'small' : 'primary small'}" id="tpTest">${st.passed ? 'Пройти тест ещё раз' : failed ? 'Пересдать — новые вопросы' : 'Тема изучена → тест'}</button>
+        : jobBusy(jt) ? jobBlock(jt)
+        : `${jt?.state === 'error' ? jobBlock(jt) : ''}<div class="row"><button type="button" class="${st.passed ? 'small' : 'primary small'}" id="tpTest">${st.passed ? 'Пройти тест ещё раз' : failed ? 'Пересдать — новые вопросы' : 'Тема изучена → тест'}</button>
           <span class="hint" style="margin:0">8 вопросов на языке урока (${data.lang === 'ru' ? 'RU' : 'EN'}), сдано от 7 верных (≥ 80%). Составляет Haiku, ≈ $0.003; проверяет приложение.</span></div>`}
     </section>
     <p class="muted small" style="margin:10px 0 0">Урок — общие знания по теме, не факты о тебе. <button type="button" class="link-btn inline" id="tpRelesson">пересоздать урок</button></p>`;
@@ -3013,10 +3015,11 @@ function verdictBlock(d) {
   const v = d.verdict;
   const job = d.jobs.verdict;
   const busy = job && ['running', 'queued'].includes(job.state);
-  if (busy || job?.state === 'error') return `<div class="verdict">${jobBlock(job)}</div>`;
+  if (busy) return `<div class="verdict">${jobBlock(job)}</div>`;
+  const err = job?.state === 'error' ? jobBlock(job) : '';
   if (!v) {
-    if (!d.hasVacancy || !d.hasVacancyText) return '';
-    return `<div class="verdict row"><button type="button" class="small" id="verdictBtn">Вердикт рекрутера</button>
+    if (!d.hasVacancy || !d.hasVacancyText) return err;
+    return `${err}<div class="verdict row"><button type="button" class="small" id="verdictBtn">${err ? 'Повторить вердикт' : 'Вердикт рекрутера'}</button>
       <span class="hint" style="margin:0">Позвал бы рекрутер на разговор и почему нет — по ${d.hasCV ? 'этому CV' : 'Master CV'}. Агент, ≈ $0.1–0.3.</span></div>`;
   }
   const [tone, label] = VERDICT_LABELS[v.verdict] || ['neutral', v.verdict];

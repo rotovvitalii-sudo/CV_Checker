@@ -878,3 +878,29 @@ a.test-row:hover { border-color: var(--accent); }
 .c-les input[data-lt] { flex: 1; min-width: 200px; }
 .c-goal { width: 100%; margin-top: 4px; }
 .tp-review { margin: 12px 0; }
+
+/* C20 · требование → кейс */
+.bad-text { color: var(--bad); }
+.req-list { display: flex; flex-direction: column; gap: 6px; }
+.req-row { border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 12px; }
+.req-row[open] { border-color: var(--input); }
+.req-row > summary { cursor: pointer; display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; list-style: none; }
+.req-row > summary::-webkit-details-marker { display: none; }
+.req-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.req-meta { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; flex: none; max-width: 45%; }
+.req-meta .pill { padding: 2px 8px; font-size: 11.5px; }
+.req-meta .pill .spin { width: 9px; height: 9px; }
+.req-body { margin-top: 10px; }
+.req-tools { gap: 12px; margin-bottom: 8px; }
+.req-body .row input { flex: 1; min-width: 0; }
+.req-similar, .req-suggest { background: var(--line-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.req-quote { border-left: 3px solid var(--input); padding: 4px 0 4px 10px; margin: 6px 0; white-space: pre-wrap; }
+.req-score { margin-top: 10px; }
+.req-big { font-size: 20px; }
+.req-parts { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--body); }
+.req-hit li { color: var(--good); }
+.req-opt { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--input); }
+.req-opt:first-of-type { border-top: 0; padding-top: 0; }
+.req-add { margin-top: 10px; }
+.req-add input { flex: 1; min-width: 0; }
+@media (max-width: 600px) { .req-row > summary { flex-direction: column; gap: 6px; } .req-meta { max-width: none; justify-content: flex-start; } }

@@ -12,7 +12,7 @@ const casePill = (st) => {
   const [tone, label] = CASE_STATUS[st] || ['neutral', st || '—'];
   return `<span class="pill ${tone}">${esc(label)}</span>`;
 };
-const CASE_TABS = [['', 'Карточки'], ['letters', 'Надиктовки писем'], ['insights', 'Инсайты'], ['suggestions', 'Предложено добавить'], ['gaps', 'Пробелы']];
+const CASE_TABS = [['', 'Карточки'], ['letters', 'Надиктовки писем'], ['insights', 'Инсайты'], ['req', 'Под требования'], ['suggestions', 'Предложено добавить'], ['gaps', 'Пробелы']];
 
 async function loadCases(r) {
   clearTimeout(caseDraftTimer);
@@ -23,6 +23,7 @@ async function loadCases(r) {
   if (sub === 'new') return renderCaseNew(r.params.target || '');
   if (!casesData) root.innerHTML = '<div class="page-wrap"><div class="empty"><span class="spin"></span>Читаю базу кейсов…</div></div>';
   if (sub === 'insights') { try { insightsData = await api('/api/insights'); } catch { insightsData = null; } }
+  if (sub === 'req') { try { reqLibData = await api('/api/req-cases'); } catch { reqLibData = null; } }
   try { casesData = await api('/api/cases'); } catch (e) {
     root.innerHTML = `<div class="page-wrap"><p class="error">${esc(e.message)}</p></div>`;
     return;
@@ -42,14 +43,14 @@ function casesHead(d) {
 
 function renderCasesList(sub) {
   const d = casesData;
-  const counts = { '': d.cards.length, letters: d.letters.length, insights: d.insightsCount ?? 0, suggestions: d.suggestions.length, gaps: d.gaps.top.length };
+  const counts = { '': d.cards.length, letters: d.letters.length, insights: d.insightsCount ?? 0, req: d.reqCasesCount ?? 0, suggestions: d.suggestions.length, gaps: d.gaps.top.length };
   const drafts = d.drafts.length ? `<section class="case-drafts">
       <h3 class="st-h">Черновики кейсов</h3>
       ${d.drafts.map((x) => `<a class="case-draft-row" href="#/cases/draft/${enc(x.id)}">
         <span>${esc(x.summary || (x.dictation || '').slice(0, 90) || 'кейс')}${x.target ? ` <span class="muted">· дополнение к ${esc(x.target)}</span>` : ''}</span>
         <span class="pill ${['error1', 'error2'].includes(x.state) ? 'bad' : x.state === 'answers' ? 'warn' : 'neutral'}">${{ round1: 'агент разбирает', round2: 'агент собирает карточку', answers: 'ждёт ответов', error1: 'ошибка', error2: 'ошибка' }[x.state] || x.state}</span></a>`).join('')}
     </section>` : '';
-  const body = { '': casesCardsHtml, letters: casesLettersHtml, insights: insightsHtml, suggestions: casesSuggestionsHtml, gaps: casesGapsHtml }[sub] || casesCardsHtml;
+  const body = { '': casesCardsHtml, letters: casesLettersHtml, insights: insightsHtml, req: reqLibHtml, suggestions: casesSuggestionsHtml, gaps: casesGapsHtml }[sub] || casesCardsHtml;
   $('#casesView').innerHTML = `<div class="page-wrap">
     ${casesHead(d)}
     ${drafts}
@@ -62,6 +63,7 @@ function renderCasesList(sub) {
   </div>`;
   bindCasesList(sub);
   if (sub === 'insights') bindInsights();
+  if (sub === 'req') bindReqLib();
 }
 
 function casesCardsHtml(d) {
@@ -125,7 +127,7 @@ function cardOptions(d, selected) {
 }
 
 // C13: откуда предложение, если не из надиктовки письма
-const SUG_ORIGIN = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы', mycv: 'моё CV', myletter: 'моё письмо' };
+const SUG_ORIGIN = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы', mycv: 'моё CV', myletter: 'моё письмо', reqcase: 'кейс под требование' };
 
 function casesSuggestionsHtml(d) {
   if (!d.suggestions.length) {
@@ -574,4 +576,42 @@ function bindCaseDraft(d) {
     if (!confirm('Удалить черновик? Надиктовка уже сохранена в knowledge-base/raw/ и останется там.')) return;
     try { await api(`/api/cases/drafts/${enc(d.id)}`, { method: 'DELETE' }); location.hash = '#/cases'; } catch (err) { alert(err.message); }
   });
+}
+
+// ---------- C20 · кейсы под требования (docs/specs/45-requirement-cases.md) ----------
+let reqLibData = null;
+let reqLibQuery = '';
+
+function reqLibHtml() {
+  const D = reqLibData;
+  if (!D) return '<p class="error">Не удалось прочитать библиотеку кейсов под требования.</p>';
+  const q = reqLibQuery.toLowerCase();
+  const list = D.items.filter((x) => !q || [x.req, x.text, x.vacancy, x.card].join(' ').toLowerCase().includes(q));
+  const company = Object.fromEntries(D.cards.map((c) => [c.id, c.company]));
+  const groups = {};
+  for (const x of list) (groups[x.card || ''] ||= []).push(x);
+  const keys = Object.keys(groups).sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+  const row = (x) => `<details class="req-row"><summary><span class="req-text">${esc(x.req)}</span>
+      <span class="req-meta">${x.score != null ? `<span class="pill ${x.score >= D.threshold ? 'good' : x.score >= 45 ? 'warn' : 'bad'}">${x.score}</span>` : '<span class="pill neutral">без матча</span>'}</span></summary>
+    <div class="req-body small"><div class="muted"><a href="#/v/${enc(x.vacancy)}">${esc(x.vacancy)}</a> · ${esc(String(x.at).slice(0, 10))}</div>
+      <div class="req-quote">${esc(x.text)}</div>
+      <button type="button" class="link-btn inline danger" data-reqlibdel="${esc(x.id)}">убрать из базы</button></div></details>`;
+  return `<p class="muted small">Истории, которые ты писал под строки вакансий (блок «Требования → мои кейсы» в заявке). Кейс с матчем от ${D.threshold} попадает сюда сам,
+      остальные — по «Сохранить в базу». В новой вакансии под похожей строкой они подсказываются как «уже писал похожее». Новые факты из них — в «Предложено добавить».</p>
+    <div class="row"><label class="sr-only" for="reqLibQ">Поиск</label><input id="reqLibQ" type="search" placeholder="Поиск по требованию, тексту, вакансии" value="${esc(reqLibQuery)}" /></div>
+    ${list.length ? keys.map((k) => `<section class="iv-sec"><h3 class="st-h">${k ? `<a href="#/cases/card/${enc(k)}">${esc(k)}</a> <span class="muted small">${esc(company[k] || '')}</span>` : 'Без карточки'} · ${groups[k].length}</h3>
+        <div class="req-list">${groups[k].map(row).join('')}</div></section>`).join('')
+      : `<div class="empty">${D.items.length ? 'Ничего не нашлось.' : 'Пока пусто. Открой заявку → «Требования → мои кейсы» и напиши кейс под строку вакансии.'}</div>`}`;
+}
+
+function bindReqLib() {
+  const rerender = () => { $('#casesBody').innerHTML = reqLibHtml(); bindReqLib(); };
+  const q = $('#reqLibQ');
+  q?.addEventListener('input', () => { reqLibQuery = q.value; const pos = q.selectionStart; rerender(); const n = $('#reqLibQ'); n.focus(); n.setSelectionRange(pos, pos); });
+  document.querySelectorAll('[data-reqlibdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Убрать кейс из базы? Текст в заявке останется.')) return;
+    try { await api(`/api/req-cases/${enc(b.dataset.reqlibdel)}`, { method: 'DELETE' }); } catch (err) { alert(err.message); return; }
+    reqLibData = await api('/api/req-cases').catch(() => reqLibData);
+    rerender();
+  }));
 }
