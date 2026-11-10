@@ -37,6 +37,8 @@
 | C18 | [Профили Master CV: своя база под тип роли](43-master-cv-profiles.md) | Should | Master CV, tailor-cv, C15, C17 | ~2 д | ✅ готово (P0) |
 | C19 | [Обучение: курсы, уроки, тесты и экзамен](44-courses.md) | Should | W8, C12, W5 | ~2,5–3 д | ✅ готово (P0) |
 | C20 | [Требование → кейс: история под каждую строку вакансии](45-requirement-cases.md) | Should | V2, W5, C9, C13 | ~1,5–2 д | ✅ готово (P0) |
+| C21 | [Своё видео в уроке](46-own-video.md) | Should | W8, C19 | ~0,5 д | ✅ готово (P0) |
+| C22 | [Симулятор A/B-тестов](47-ab-simulator.md) | Should | C19, W5 | ~2–2,5 д | ✅ готово (P0) |
 | W1 | [Порог покрытия 60–70% и «верхняя треть» CV](23-coverage-top-third.md) | Must | tailor-cv | ~0,5 д | ✅ сделано (P0 + P1) |
 | W2 | [«Вакансия ещё живая?» до адаптации](24-vacancy-alive.md) | Must | C11, S6 | ~0,5 д | ✅ сделано (P0 + P1) |
 | W3 | [Вердикт рекрутера и сводка причин](25-recruiter-verdict.md) | Should | tailor-cv, S3 | ~1 д | ✅ сделано (P0 + P1) |

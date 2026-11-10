@@ -146,7 +146,19 @@ def api(base):
             ok(cd["course"]["status"] == "draft" or cd["progress"]["total"] > 0, f"курс {c['slug']}: утверждён без уроков")
     code, _, _ = get(base, "/api/learn/courses/nope-nope")
     ok(code == 404, f"неизвестный курс → {code}")
-    items = json.loads(get(base, "/api/vacancies")[2])["items"]
+    # C22: симулятор — каждый тест читается, истина не видна до решения
+    sm = json.loads(get(base, "/api/sim/ab")[2])
+    ok(set(sm["levels"]) == {"1", "2", "3", "4"}, "симулятор: 4 уровня")
+    for s in sm["list"]:
+        code, _, body = get(base, f"/api/sim/ab/{q(s['id'])}")
+        if ok(code == 200, f"симуляция {s['id']} → {code}"):
+            sv = json.loads(body)
+            if not sv.get("decision"):
+                ok("truth" not in sv and "primary_ok" not in (sv.get("scenario") or {}), f"симуляция {s['id']}: истина видна до решения")
+                ok("days" not in (sv.get("run") or {}), f"симуляция {s['id']}: данные по дням уходят клиенту")
+    code, _, _ = get(base, "/api/sim/ab/nope-nope")
+    ok(code == 404, f"неизвестная симуляция → {code}")
+    items =json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:
         code, _, body = get(base, f"/api/vacancies/{q(it['name'])}")

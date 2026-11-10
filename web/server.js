@@ -31,6 +31,7 @@ const reqCases = require('./req-cases');
 const tests = require('./test-tasks');
 const cvv = require('./cv-versions');
 const courses = require('./courses');
+const simAb = require('./sim-ab');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -1072,6 +1073,7 @@ function writeVideo(t, m, pick, retrying) {
       minutes: pick.details?.minutes || pick.video.minutes || null } : null,
     video_status: pick.ok ? 'ok' : retrying ? `ищу другое видео (${pick.why})` : pick.why, checked: new Date().toISOString() };
   if (pick.rejected.length) next.video_rejected = addRejected(m.video_rejected, pick.rejected);
+  if ((next.video?.url || null) !== (learning.meta(t.slug)?.video?.url || null)) learning.dropTest(t.slug); // C21: тест был по прежнему видео
   fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
 }
 
@@ -1081,7 +1083,7 @@ const addRejected = (old, add) => { const seen = new Set((old || []).map((x) => 
 // ctx: { target, topic: {slug, title_en, title_ru, why}, busy(kind), attach(kind, job), course? — контекст курса для урока, label? }
 const topicErr = (status, error) => Object.assign(new Error(error), { status });
 const vacCtx = (name, t) => ({ target: name, topic: t, busy: (k) => busy(store.app(name), k), attach: (k, j) => attach(name, k, j) });
-const sendTopicJob = (res, fn) => { try { const r = fn(); return Promise.resolve(r).then((x) => res.json(x?.id ? { jobId: x.id } : x)); } catch (e) { return res.status(e.status || 500).json({ error: e.message }); } };
+const sendTopicJob = (res, fn) => Promise.resolve().then(fn).then((x) => res.json(x?.id ? { jobId: x.id } : x), (e) => res.status(e.status || 500).json({ error: e.message }));
 
 // Повторный поиск видео: агент возвращает кандидатов JSON-ом, файл пишет сервер (в фоне агенту скрипты запрещены)
 function videoJob(ctx, bad, keep) {
@@ -1115,6 +1117,7 @@ function lessonJob(ctx) {
   fs.mkdirSync(d, { recursive: true });
   const lessonFile = path.join(d, 'lesson.en.md'), metaFile = path.join(d, 'meta.json');
   const before = fs.existsSync(lessonFile) ? fs.statSync(lessonFile).mtimeMs : 0;
+  const own = learning.meta(t.slug)?.video?.own ? learning.meta(t.slug).video : null; // C21: своё видео переживает пересоздание урока
   const job = runJob({
     kind: 'lesson', target: ctx.target,
     prompt: prompts.topicLesson({ slug: t.slug, title_en: t.title_en, title_ru: t.title_ru, vacancy: ctx.course ? null : ctx.target, why: t.why || {},
@@ -1127,6 +1130,11 @@ function lessonJob(ctx) {
       fs.rmSync(path.join(d, 'review.json'), { force: true });
       const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
       if (ctx.course) m.courses = [...new Set([...(learning.meta(t.slug)?.courses || []), ...(m.courses || []), ctx.course.slug])];
+      if (own) {
+        const { video_candidates, ...rest } = m;
+        fs.writeFileSync(metaFile, `${JSON.stringify({ ...rest, video: own, video_status: 'ok', checked: new Date().toISOString() }, null, 2)}\n`);
+        return;
+      }
       const pick = await pickVideo(m);
       writeVideo(t, m, pick, !pick.ok && pick.rejected.length > 0);
       // Ни одно не прошло — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
@@ -1157,8 +1165,36 @@ async function anotherVideo(ctx) {
   }
   const why = m.video ? 'нужно другое видео — по фильтру' : (m.video_status || 'видео не найдено');
   // Текущее видео — в отклонённые, чтобы агент не вернул его же
-  if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: 'заменено вручную' }]) }, null, 2)}\n`);
+  if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: m.video.own ? 'своё видео заменено поиском' : 'заменено вручную' }]) }, null, 2)}\n`);
   return videoJob(ctx, why, m.video);
+}
+
+// C21 · своё видео: ссылку вставляет кандидат. Без агента: oEmbed (есть и встраивается) + страница видео (главы, описание).
+// Фильтр профиля не блокирует — только предупреждения. Следующий тест — по этому видео
+async function ownVideo(ctx, raw) {
+  const t = ctx.topic;
+  const m = learning.meta(t.slug);
+  if (!m || !learning.lesson(t.slug, 'en')) throw topicErr(400, 'сначала урок');
+  if (ctx.busy('lessonvideo')) throw topicErr(409, 'сейчас идёт поиск видео — дождись его');
+  const url = learning.ytCanon(raw);
+  if (!url) throw topicErr(400, 'нужна ссылка на видео YouTube');
+  let o;
+  try {
+    const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw topicErr(400, `видео нет, оно закрыто или запрещено встраивание (oEmbed ${r.status})`);
+    o = await r.json();
+  } catch (e) { throw e.status ? e : topicErr(502, `oEmbed недоступен: ${e.message}`); }
+  const details = await videoDetails(url);
+  const miss = videoRuleMiss(details, o.title);
+  const prev = m.video;
+  const { video_candidates, ...rest } = m;
+  const rejected = (m.video_rejected || []).filter((x) => x.url !== url);
+  const next = { ...rest, video: { url, title: o.title, channel: o.author_name, ...details, key_points: [], source: 'own', own: true,
+    set_at: new Date().toISOString(), warnings: miss ? [miss] : [] }, video_status: 'ok', checked: new Date().toISOString(),
+  video_rejected: prev && prev.url !== url ? addRejected(rejected, [{ url: prev.url, title: prev.title, why: 'заменено своим' }]) : rejected };
+  if (!prev || prev.url !== url) learning.dropTest(t.slug);
+  fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
+  return { ok: true, video: next.video };
 }
 
 function translateJob(ctx) {
@@ -1186,12 +1222,13 @@ function topicTestJob(ctx, lang) {
   if (ctx.busy('topictest')) throw topicErr(409, 'тест уже составляется');
   const text = learning.lesson(t.slug, 'en');
   if (!text) throw topicErr(400, 'сначала урок');
+  const video = learning.meta(t.slug)?.video || null; // текущее видео — вопросы по нему
   const job = runJob({
     kind: 'topictest', target: ctx.target, system: prompts.TEST_SYSTEM,
-    prompt: prompts.topicTest({ lessonText: text, video: learning.meta(t.slug)?.video, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
+    prompt: prompts.topicTest({ lessonText: text, video, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
       lang: lang === 'ru' ? 'ru' : 'en', numeric: ctx.course?.kind === 'domain' }),
     logFile: path.join(learning.dir(t.slug), 'test.log'),
-    onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText))),
+    onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText)), video?.url || null),
   });
   job.topic = t.slug;
   job.label = ctx.label;
@@ -1207,6 +1244,7 @@ const vacTopicCtx = (req, res) => {
 };
 app.post('/api/vacancies/:name/topics/:slug/lesson', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => lessonJob(c)); }));
 app.post('/api/vacancies/:name/topics/:slug/video', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => anotherVideo(c)); }));
+app.post('/api/vacancies/:name/topics/:slug/video/own', wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => ownVideo(c, req.body?.url)); }));
 app.post('/api/vacancies/:name/topics/:slug/translate', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => translateJob(c)); }));
 app.post('/api/vacancies/:name/topics/:slug/test', agentReady, wrap(async (req, res) => { const c = vacTopicCtx(req, res); if (c) await sendTopicJob(res, () => topicTestJob(c, req.body?.lang)); }));
 
@@ -3320,6 +3358,7 @@ function courseCtx(req, res) {
 }
 app.post('/api/learn/courses/:slug/topics/:topic/lesson', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => lessonJob(c)); }));
 app.post('/api/learn/courses/:slug/topics/:topic/video', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => anotherVideo(c)); }));
+app.post('/api/learn/courses/:slug/topics/:topic/video/own', wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => ownVideo(c, req.body?.url)); }));
 app.post('/api/learn/courses/:slug/topics/:topic/translate', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => translateJob(c)); }));
 app.post('/api/learn/courses/:slug/topics/:topic/test', agentReady, wrap(async (req, res) => { const c = courseCtx(req, res); if (c) await sendTopicJob(res, () => topicTestJob(c, req.body?.lang)); }));
 
@@ -3351,6 +3390,133 @@ app.post('/api/learn/courses/:slug/exam/submit', wrap(async (req, res) => {
     res.json(r);
   } catch (e) { cErr(res, e); }
 }));
+
+// ---------- C22: симулятор A/B-тестов ----------
+// Истина — только на сервере (sim-ab.js → truth.json); клиенту уходит после решения.
+const simJobs = new Map(); // id → {scenario|own|debrief: jobId}
+const simJob = (id, kind) => { const j = jobs.get(simJobs.get(id)?.[kind]); return j ? publicJob(j) : null; };
+const setSimJob = (id, kind, job) => simJobs.set(id, { ...(simJobs.get(id) || {}), [kind]: job.id });
+const simBusy = (id, kind) => ['running', 'queued'].includes(simJob(id, kind)?.state);
+function simView(id) {
+  const v = simAb.publicView(id);
+  v.jobs = Object.fromEntries(['scenario', 'own', 'debrief'].map((k) => [k, simJob(id, k)]).filter(([, j]) => j));
+  return v;
+}
+// Урок библиотеки про эксперименты — ссылка на слабое место и обратно
+const abLesson = () => learning.library().find((t) => /(^|-)(a-?b|ab)-?test|experiment/.test(t.slug)) || null;
+function runSimScenario(id) {
+  const s = simAb.get(id);
+  const truth = simAb.truthOf(id);
+  const job = runJob({ kind: 'simscenario', target: `sim:${id}`, system: prompts.SIM_SCENARIO_SYSTEM,
+    prompt: prompts.simScenario({ level: s.level, levelTitle: simAb.LEVELS[s.level].title, industry: s.industry, trap: truth.trap }),
+    logFile: path.join(simAb.sdir(id), 'scenario.log'), onDone: async (j) => { simAb.setScenario(id, oneJSON(j.finalText)); } });
+  job.label = 'симулятор A/B';
+  setSimJob(id, 'scenario', job);
+  return job;
+}
+function runSimOwn(id) {
+  const s = simAb.get(id);
+  const files = (s.own.assets || []).map((a) => simAb.assetPath(id, a.file));
+  const job = runJob({ kind: 'simown', target: `sim:${id}`, system: prompts.SIM_OWN_SYSTEM, tools: files.length ? 'Read' : '', cwd: simAb.sdir(id),
+    prompt: prompts.simOwn({ own: s.own, files }),
+    logFile: path.join(simAb.sdir(id), 'own.log'), onDone: async (j) => { simAb.setOwn(id, oneJSON(j.finalText)); } });
+  job.label = 'свой A/B-тест';
+  setSimJob(id, 'own', job);
+  return job;
+}
+function runSimDebrief(id) {
+  const v = simAb.publicView(id);
+  const s = simAb.get(id);
+  const job = runJob({ kind: 'simdebrief', target: `sim:${id}`, system: prompts.SIM_DEBRIEF_SYSTEM,
+    prompt: prompts.simDebrief({ scenario: s.scenario, truth: v.truth, design: s.design, calc: simAb.calc(s.scenario, s.design), decision: v.decision, score: v.decision.score,
+      decisions: simAb.DECISIONS, flags: simAb.FLAGS }),
+    logFile: path.join(simAb.sdir(id), 'debrief.log'), onDone: async (j) => { simAb.setDebrief(id, simAb.normDebrief(oneJSON(j.finalText))); } });
+  job.label = 'разбор A/B-теста';
+  setSimJob(id, 'debrief', job);
+  return job;
+}
+app.get('/api/sim/ab', wrap(async (req, res) => {
+  const l = abLesson();
+  res.json({ list: simAb.list(), stats: simAb.stats(), levels: simAb.LEVELS, industries: simAb.INDUSTRIES, flags: simAb.FLAGS, decisions: simAb.DECISIONS,
+    lesson: l ? { slug: l.slug, title: l.title_en } : null });
+}));
+app.post('/api/sim/ab', agentReady, wrap(async (req, res) => {
+  try {
+    const s = simAb.create({ level: Number(req.body?.level) || 1, industry: String(req.body?.industry || '') });
+    runSimScenario(s.id);
+    res.json({ id: s.id });
+  } catch (e) { cErr(res, e); }
+}));
+// Свой тест: сначала описание, потом скриншоты по одному, потом «разобрать»
+app.post('/api/sim/ab/own', wrap(async (req, res) => {
+  const b = req.body || {};
+  const own = { description: String(b.description || '').trim().slice(0, 6000), hypothesis: String(b.hypothesis || '').trim().slice(0, 1200),
+    metric: String(b.metric || '').trim().slice(0, 200), industry: String(b.industry || '').trim().slice(0, 60), assets: [] };
+  if (!own.description && !own.hypothesis) return res.status(400).json({ error: 'опиши тест или гипотезу' });
+  const s = simAb.create({ source: 'own', industry: 'own', own });
+  res.json({ id: s.id });
+}));
+app.post('/api/sim/ab/:id/assets', express.raw({ type: 'application/octet-stream', limit: '8mb' }), wrap(async (req, res) => {
+  try { res.json({ assets: simAb.saveAsset(req.params.id, String(req.query.name || 'shot.png'), req.body) }); } catch (e) { cErr(res, e); }
+}));
+app.get('/api/sim/ab/:id/assets/:file', wrap(async (req, res) => {
+  try { res.sendFile(simAb.assetPath(req.params.id, req.params.file)); } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/ab/:id/own-run', agentReady, wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const s = simAb.get(id);
+    if (s.source !== 'own') return res.status(400).json({ error: 'это не свой тест' });
+    if (s.scenario?.ready) return res.status(409).json({ error: 'сценарий уже готов' });
+    if (simBusy(id, 'own')) return res.status(409).json({ error: 'уже разбираю' });
+    const b = req.body || {};
+    if (b.answers) { s.own.description = `${s.own.description}\n\nОтветы на вопросы:\n${String(b.answers).slice(0, 3000)}`; s.questions = []; simAb.save(id, s); }
+    res.json({ jobId: runSimOwn(id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/ab/:id/scenario', agentReady, wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const s = simAb.get(id);
+    if (s.source === 'own') return res.status(400).json({ error: 'для своего теста — «Разобрать»' });
+    if (s.scenario?.ready) return res.status(409).json({ error: 'ситуация уже есть' });
+    if (simBusy(id, 'scenario')) return res.status(409).json({ error: 'ситуация уже пишется' });
+    res.json({ jobId: runSimScenario(id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.get('/api/sim/ab/:id', wrap(async (req, res) => { try { res.json(simView(req.params.id)); } catch (e) { cErr(res, e); } }));
+app.post('/api/sim/ab/:id/calc', wrap(async (req, res) => {
+  try { const s = simAb.get(req.params.id); if (!s.scenario?.ready) throw Object.assign(new Error('ситуация не готова'), { status: 400 }); const d = simAb.normDesign(req.body, s.scenario); res.json({ design: d, calc: simAb.calc(s.scenario, d) }); } catch (e) { cErr(res, e); }
+}));
+app.put('/api/sim/ab/:id/design', wrap(async (req, res) => { try { res.json(simAb.setDesign(req.params.id, req.body)); } catch (e) { cErr(res, e); } }));
+app.post('/api/sim/ab/:id/start', wrap(async (req, res) => {
+  try { if (req.body?.design) simAb.setDesign(req.params.id, req.body.design); simAb.start(req.params.id); res.json(simView(req.params.id)); } catch (e) { cErr(res, e); }
+}));
+app.get('/api/sim/ab/:id/results', wrap(async (req, res) => {
+  try {
+    const seg = ['mobile', 'desktop', 'new', 'returning'].includes(req.query.seg) ? req.query.seg : null;
+    res.json(simAb.view(req.params.id, Number(req.query.day), seg, req.query.daily === '1'));
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/ab/:id/extend', wrap(async (req, res) => { try { simAb.extend(req.params.id, 7); res.json(simView(req.params.id)); } catch (e) { cErr(res, e); } }));
+app.post('/api/sim/ab/:id/decide', wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const dec = simAb.decide(id, req.body || {});
+    try { if ((await ensureReady()).ok) runSimDebrief(id); } catch { /* разбор агентом — по кнопке */ }
+    events.add({ type: 'sim', title: `A/B-тест: ${dec.score.total}/100${dec.score.correct ? ' · решение верное' : ''}`, text: simAb.get(id).scenario.title, link: `#/learn/sim/${id}` });
+    res.json(simView(id));
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/ab/:id/debrief', agentReady, wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!simAb.publicView(id).decision) return res.status(400).json({ error: 'сначала решение' });
+    if (simBusy(id, 'debrief')) return res.status(409).json({ error: 'разбор уже идёт' });
+    res.json({ jobId: runSimDebrief(id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.delete('/api/sim/ab/:id', wrap(async (req, res) => { try { simAb.get(req.params.id); simAb.remove(req.params.id); res.json({ ok: true }); } catch (e) { cErr(res, e); } }));
 
 // Повторение сданной темы: выжимка и 5 вопросов, один раз на урок (Haiku); на «сдано» не влияет
 app.post('/api/topics/:slug/review', agentReady, wrap(async (req, res) => {

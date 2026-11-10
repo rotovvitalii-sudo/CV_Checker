@@ -15,18 +15,20 @@ const COURSE_JOB_LABEL = { outline: 'Opus собирает структуру к
 async function loadLearn(r) {
   clearTimeout(learnTimer);
   clearInterval(examTick);
+  if (typeof simTimer !== 'undefined') clearTimeout(simTimer);
   const sub = r.sub || '';
+  if (sub === 'sim' || sub.startsWith('sim/')) return loadSim(sub);
   if (sub.startsWith('c/')) return renderCourse(sub.slice(2));
   if (sub === 'new') return renderCourseNew();
   const root = $('#learnView');
   if (!learnData) root.innerHTML = '<div class="page-wrap"><div class="empty"><span class="spin"></span>Читаю курсы…</div></div>';
   try { learnData = await api('/api/learn'); } catch (e) { root.innerHTML = `<div class="page-wrap"><p class="error">${esc(e.message)}</p></div>`; return; }
   const d = learnData;
-  const tabs = [['', `Курсы · ${d.courses.length}`], ['topics', `Все темы · ${d.topics.length}`]];
+  const tabs = [['', `Курсы · ${d.courses.length}`], ['topics', `Все темы · ${d.topics.length}`], ['sim', 'Симулятор']];
   root.innerHTML = `<div class="page-wrap">
     <section class="home-head">
       <div><h1>Обучение</h1>
-        <p class="lead">Курсы по роли или домену: структура → уроки с видео → тесты → пробный экзамен. Уроки — общая библиотека с подготовкой к интервью: сданное засчитывается везде.</p></div>
+        <p class="lead">Курсы по роли или домену: структура → уроки с видео → тесты → пробный экзамен. Уроки — общая библиотека с подготовкой к интервью: сданное засчитывается везде. Симулятор — практика A/B-тестов.</p></div>
       <a class="btn primary" href="#/learn/new">+ Новый курс</a>
     </section>
     <section class="stack">

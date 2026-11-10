@@ -869,5 +869,91 @@ ${error ? `\nПрошлый вариант не прошёл проверку: $
  "questions": [{"q": "…", "why": "что изменится в выводах"}], "risks": ["…"]}`;
 }
 
-module.exports = { reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- C22: симулятор A/B-тестов ----------
+const SIM_SCENARIO_SYSTEM = 'Ты пишешь учебную ситуацию для тренажёра A/B-тестов: правдоподобный продукт, проблема и изменение в варианте B. Ты не знаешь и не придумываешь результат теста. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+const SIM_TRAP_HINT = {
+  srm: 'вариант B добавляет шаг, который грузится отдельно (новая страница, редирект, внешний виджет оплаты) — естественное место, где часть пользователей может потеряться до учёта. Не упоминай никаких проблем с учётом.',
+  novelty: 'вариант B — заметное визуальное изменение интерфейса (новый дизайн блока, новая подача).',
+  weekday: 'у продукта разное поведение в будни и выходные (работа против досуга), изменение в B связано с этим ритмом.',
+  tradeoff_rev: 'вариант B может поднять конверсию за счёт денег: скидка, более дешёвый тариф по умолчанию, ниже порог бесплатной доставки.',
+  tradeoff_guard: 'вариант B — агрессивный приём роста (таймер срочности, предвыбранная опция, упрощённая регистрация без подтверждения), который может ударить по качеству: возвраты, отписки, жалобы, отток. Первая защитная метрика — именно такая, "better": "down".',
+};
+function simScenario({ level, levelTitle, industry, trap }) {
+  return `Тренажёр A/B-тестов, уровень ${level} «${levelTitle}». Отрасль: ${industry}.
+${SIM_TRAP_HINT[trap] ? `Каким должно быть изменение: ${SIM_TRAP_HINT[trap]}\n` : ''}
+Правила:
+- Продукт вымышленный, но правдоподобный для отрасли; без реальных брендов.
+- Текст по-русски, названия метрик — как говорят в индустрии (можно английские термины).
+- Не пиши, чем закончится тест, и не намекай на проблемы в данных; в названии теста — только суть изменения.
+- Числа правдоподобны для отрасли: трафик в день на страницу теста, базовая конверсия (доля), средний чек.
+- 1–2 защитные метрики, которые разумно смотреть для этого изменения (доля пользователей с событием), с базовым уровнем и направлением: "up" — чем больше, тем лучше, "down" — чем меньше.
+
+Верни JSON:
+{"title": "короткое название теста", "industry": "${industry}", "product": "что за продукт, 1–2 фразы", "context": "ситуация: что происходит в метриках, почему команда думает об изменении, 3–5 фраз",
+ "problem": "проблема одной фразой", "change_a": "что видит пользователь в A (как сейчас)", "change_b": "что меняется в B, конкретно",
+ "traffic_per_day": <целое>, "base_conv": <доля, напр. 0.0xx>, "aov": <средний чек>, "currency": "$|€|₽", "conv_name": "название главной конверсии, до 40 знаков", "rpv_name": "Revenue per visitor",
+ "extra_metrics": [{"name": "до 40 знаков", "better": "up|down", "base": <доля>}], "primary_ok": ["conv"], "guard_must": ["…"]}
+Числа — свои для этого продукта и отрасли (у тревела чек сотни, у мобильной игры — единицы, у B2B SaaS — сотни и тысячи), не копируй шаблон.
+"primary_ok" — какие метрики разумно взять главной (из conv, rpv, g1, g2), "guard_must" — какие защитные обязательно смотреть.`;
+}
+
+// Свой тест: один ход с инструментом Read (только картинки), без контекста проекта; предлагает правдоподобные исходные цифры
+const SIM_OWN_SYSTEM = 'Ты помогаешь превратить A/B-тест кандидата в учебную симуляцию. Читаешь только переданные скриншоты инструментом Read, ничего не пишешь и не ищешь. Финальный ответ — только один JSON-объект без пояснений и без markdown.';
+function simOwn({ own, files }) {
+  return `Ты помогаешь кандидату превратить его A/B-тест в учебную симуляцию (тренажёр CV Checker, раздел «Обучение → Симулятор»).
+${files.length ? 'Сначала прочитай скриншоты инструментом Read (абсолютные пути ниже), потом ответь одним JSON-объектом.' : 'Ответь одним JSON-объектом.'}
+
+Описание теста от кандидата:
+"""
+${own.description || '—'}
+"""
+Гипотеза: ${own.hypothesis || '—'}
+Метрика (если указал): ${own.metric || '—'}
+Отрасль (если указал): ${own.industry || '—'}
+${files.length ? `Скриншоты вариантов:\n${files.map((f) => `- ${f}`).join('\n')}\n` : ''}
+Задача:
+1. Пойми, что меняется между A и B. Если по описанию и скриншотам это непонятно или неясно, на какую метрику изменение должно влиять, — не угадывай: верни {"ok": false, "questions": ["…"]} (2–5 вопросов по-русски).
+2. Иначе предложи правдоподобные для отрасли исходные цифры и диапазон истинного эффекта (относительный, от −0.1 до +0.3) с обоснованием — на что похоже по известным бенчмаркам.
+3. Перечисли риски, вероятные для такого изменения, из списка: novelty, srm, simpson, weekday, tradeoff_rev, tradeoff_guard.
+
+Верни JSON:
+{"ok": true, "title": "…", "industry": "…", "product": "…", "context": "3–5 фраз по-русски", "problem": "…", "change_a": "…", "change_b": "…",
+ "traffic_per_day": <целое>, "base_conv": <доля>, "aov": <средний чек>, "currency": "$|€|₽", "conv_name": "до 40 знаков", "rpv_name": "Revenue per visitor",
+ "extra_metrics": [{"name": "до 40 знаков", "better": "up|down", "base": <доля>}], "primary_ok": ["conv"], "guard_must": ["…"],
+ "effect_range": [<от>, <до>], "rationale": "почему такие цифры и диапазон, 2–4 фразы", "risks": ["novelty"]}`;
+}
+
+const SIM_DEBRIEF_SYSTEM = 'Ты — строгий наставник по экспериментам (Growth / Product). Оцениваешь, как кандидат провёл учебный A/B-тест и обосновал решение. Без похвалы и без переписывания его ответа. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+function simDebrief({ scenario, truth, design, calc, decision, score, decisions, flags }) {
+  const m = (k) => scenario.metrics.find((x) => x.key === k)?.name || k;
+  const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(2)}%`);
+  return `Ситуация: ${scenario.title}. ${scenario.product} ${scenario.context}
+A: ${scenario.change_a}
+B: ${scenario.change_b}
+
+Дизайн кандидата: гипотеза «${design.hypothesis || '—'}»; главная метрика — ${m(design.primary)}; защитные — ${design.guards.map(m).join(', ') || 'нет'};
+MDE ${pct(design.mde)}, α ${design.alpha}, мощность ${design.power}, доля B ${design.split}, ${design.days} дн. (нужно по расчёту ≈ ${calc.daysNeeded} дн., ${calc.perArm} на вариант).
+
+Данные на день решения (${decision.day} из ${design.days}): A ${decision.at.n.A}, B ${decision.at.n.B}; SRM p = ${decision.at.srm.p}.
+${decision.at.metrics.map((x) => `- ${x.name}: A ${x.type === 'mean' ? x.a : pct(x.a)}, B ${x.type === 'mean' ? x.b : pct(x.b)}, отн. ${pct(x.rel)}, p = ${x.p}, P(B лучше) = ${x.bayes?.pBetter}`).join('\n')}
+
+Решение кандидата: «${decisions[decision.decision]}». Заметил: ${decision.flags.map((f) => flags[f]).join(', ') || 'ничего не отметил'}.
+Обоснование кандидата:
+"""
+${decision.reason || '(пусто)'}
+"""
+
+Правда (кандидат её не видел): ${truth.text}. Истинные эффекты: ${Object.entries(truth.effects).map(([k, v]) => `${m(k)} ${pct(v)}`).join(', ')}.
+Оценка приложения: ${score.total}/100 (дизайн ${score.design}/30, процесс ${score.process}/30, решение ${score.decision}/40). Замечания: ${score.notes.join('; ') || 'нет'}.
+
+Оцени ОБОСНОВАНИЕ (не только решение):
+- "grade": 1–4 (4 — решение и логика как у сильного Growth PM: метрики, интервалы, риски, следующий шаг; 1 — решение по одному p-value или без логики);
+- "verdict": одна-две фразы по-русски, по существу;
+- "missed": 1–4 пункта, что упущено в рассуждении (конкретно: какую цифру не посмотрел, какой риск не назвал);
+- "strong": 2–4 тезиса, на что опирался бы сильный кандидат (не переписывай его текст);
+- "interview": 2–3 фразы на английском — как коротко объяснить решение CPO на интервью, с цифрами из данных.
+Верни JSON: {"grade": 3, "verdict": "…", "missed": ["…"], "strong": ["…"], "interview": "…"}`;
+}
+
+module.exports = { simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

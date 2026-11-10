@@ -31,6 +31,19 @@ function videoRules() {
   return { max_minutes: num('max_minutes', 1, 120), max_years: num('max_years', 0.5, 20), min_views: num('min_views', 0, 1e9) };
 }
 
+// Любая форма ссылки YouTube → https://www.youtube.com/watch?v=<id>; не YouTube — null
+function ytCanon(url) {
+  let u;
+  try { u = new URL(String(url || '').trim()); } catch { return null; }
+  const host = u.hostname.replace(/^(www\.|m\.|music\.)/, '');
+  let id = '';
+  if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    id = u.pathname === '/watch' ? u.searchParams.get('v') || '' : (u.pathname.match(/^\/(?:shorts|embed|live|v)\/([^/?#]+)/) || [])[1] || '';
+  }
+  return /^[\w-]{6,20}$/.test(id) ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
 const meta = (slug) => readJSON(path.join(dir(slug), 'meta.json'));
 const lesson = (slug, lang = 'en') => readText(path.join(dir(slug), `lesson.${lang}.md`));
 function attempts(slug) {
@@ -122,9 +135,11 @@ function normTest(raw) {
       from: q.from === 'video' ? 'video' : 'lesson' };
   });
 }
-function saveTest(slug, questions) {
-  fs.writeFileSync(path.join(dir(slug), 'test-current.json'), JSON.stringify({ at: new Date().toISOString(), questions }, null, 2));
+// video — url видео, по которому составлен тест (C21: после замены видео незаконченный тест сбрасывается)
+function saveTest(slug, questions, video = null) {
+  fs.writeFileSync(path.join(dir(slug), 'test-current.json'), JSON.stringify({ at: new Date().toISOString(), video, questions }, null, 2));
 }
+const dropTest = (slug) => fs.rmSync(path.join(dir(slug), 'test-current.json'), { force: true });
 function publicTest(slug) {
   const t = readJSON(path.join(dir(slug), 'test-current.json'));
   if (!t) return null;
@@ -142,11 +157,11 @@ function grade(slug, answers) {
   const right = res.filter((r) => r.ok).length;
   const score = right / res.length;
   const rec = { at: new Date().toISOString(), right, total: res.length, score: Math.round(score * 100) / 100, passed: score >= PASS,
-    questions: t.questions.map((q) => q.q) };
+    video: t.video || null, questions: t.questions.map((q) => q.q) };
   fs.appendFileSync(path.join(dir(slug), 'attempts.jsonl'), `${JSON.stringify(rec)}\n`);
   fs.rmSync(f, { force: true });
   return { ...rec, wrong: res.filter((r) => !r.ok) };
 }
 
 module.exports = { LEARN, PASS, QUESTIONS, slugOk, dir, meta, lesson, attempts, status, library, vacancyTopics, topicsFile,
-  normTopics, applyMatches, outline, readiness, normTest, saveTest, publicTest, pastQuestions, grade, validDays, videoRules, VIDEO_RULES };
+  normTopics, applyMatches, outline, readiness, normTest, saveTest, dropTest, ytCanon, publicTest, pastQuestions, grade, validDays, videoRules, VIDEO_RULES };

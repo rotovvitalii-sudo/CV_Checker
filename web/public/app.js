@@ -1838,6 +1838,12 @@ function renderTopic(d, t, data) {
       <button type="button" data-tlang="en" aria-pressed="${data.lang === 'en'}">EN</button>
       <button type="button" data-tlang="ru" aria-pressed="${data.lang === 'ru'}" ${jobBusy(jtr) ? 'disabled' : ''}>${st.hasRu ? 'RU' : 'RU · перевести'}</button></div>`;
   const test = data.test;
+  // C21: своё видео — ссылка вместо найденного агентом или когда агент не нашёл
+  const ownForm = jobBusy(jv) ? '' : `<details class="tp-own"><summary class="link-btn inline">${v ? 'вставить свою ссылку' : 'вставить свою ссылку на YouTube'}</summary>
+      <div class="row" style="margin:6px 0"><input id="tpOwnUrl" type="url" placeholder="https://youtu.be/…" style="flex:1;min-width:0">
+        <button type="button" class="small" id="tpOwnSet">Поставить</button></div>
+      <p class="hint" style="margin:0">Бесплатно, без агента. Фильтр профиля только предупредит. Незаконченный тест сбросится, следующий — по этому видео.</p></details>`;
+  const changedAfterPass = st.passed && v?.set_at && st.passedAt && Date.parse(v.set_at) > Date.parse(st.passedAt);
   return `<div class="row tp-bar">${langBar}
       ${jobBusy(jtr) ? '<span class="muted small"><span class="spin"></span>перевожу…</span>' : jtr?.state === 'error' ? `<span class="error small">${esc(jtr.error)}</span>` : ''}
       <span class="muted small">${!st.hasRu && data.lang === 'en' ? 'перевод ≈ $0.003, термины останутся английскими' : ''}</span>
@@ -1850,7 +1856,11 @@ function renderTopic(d, t, data) {
         <p class="small" style="margin:6px 0"><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>
           <span class="muted">${[v.channel, v.minutes ? `${v.minutes} мин` : '', v.views ? `${fmtViews(v.views)} просм.` : '', v.published ? new Date(v.published).toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }) : '']
             .filter(Boolean).map(esc).join(' · ')}</span>
+          ${v.own ? '<span class="chip">твоё видео</span>' : ''}
           ${jobBusy(jv) ? '<span class="muted"><span class="spin"></span>ищу другое…</span>' : '<button type="button" class="link-btn inline" id="tpVideo" title="Короткое, свежее, популярное, на английском — по фильтру профиля">другое видео (≈ $0.2)</button>'}</p>
+        ${ownForm}
+        ${(v.warnings || []).length ? `<p class="warn-text small" style="margin:0">Не по фильтру профиля: ${v.warnings.map(esc).join('; ')} — ты поставил сам.</p>` : ''}
+        ${changedAfterPass ? '<p class="muted small" style="margin:0">Тема сдана с прежним видео — пересдавать не обязательно.</p>' : ''}
         ${m.video_status && m.video_status !== 'ok' ? `<p class="muted small" style="margin:0">${esc(m.video_status)}</p>` : ''}
         ${(v.key_points || []).length ? `<p class="muted small" style="margin:0">Ключевые мысли (по ${v.source === 'transcript' ? 'субтитрам' : 'описанию и главам'}) — по ним будут вопросы:</p>
           <ul class="tight small">${v.key_points.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>`
@@ -1859,7 +1869,7 @@ function renderTopic(d, t, data) {
           : '<p class="muted small" style="margin:0">У видео нет глав и описания — вопросы теста только по уроку.</p>'}`
         : jobBusy(jv) ? '<p class="muted small"><span class="spin"></span>Ищу другое видео — первое не прошло проверку…</p>'
         : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.
-            <button type="button" class="link-btn inline" id="tpVideo">поискать ещё (≈ $0.2)</button></p>`}
+            <button type="button" class="link-btn inline" id="tpVideo">поискать ещё (≈ $0.2)</button></p>${ownForm}`}
     </section>
     ${insBlock}
     ${(m.cards || []).length ? `<section><h4>Связь с твоим опытом</h4><ul class="tight small">${m.cards.map((c) => `<li><a href="#/cases/card/${enc(c.id)}">${esc(c.id)}</a> — ${esc(c.where || '')}</li>`).join('')}</ul></section>` : ''}
@@ -1878,6 +1888,7 @@ function renderTopic(d, t, data) {
         : `${jt?.state === 'error' ? jobBlock(jt) : ''}<div class="row"><button type="button" class="${st.passed ? 'small' : 'primary small'}" id="tpTest">${st.passed ? 'Пройти тест ещё раз' : failed ? 'Пересдать — новые вопросы' : 'Тема изучена → тест'}</button>
           <span class="hint" style="margin:0">8 вопросов на языке урока (${data.lang === 'ru' ? 'RU' : 'EN'}), сдано от 7 верных (≥ 80%). Составляет Haiku, ≈ $0.003; проверяет приложение.</span></div>`}
     </section>
+    ${/(^|-)(a-?b|ab)-?test|experiment/.test(t.slug) ? '<p class="small" style="margin:10px 0 0"><a href="#/learn/sim">Практика в симуляторе A/B-тестов →</a></p>' : ''}
     <p class="muted small" style="margin:10px 0 0">Урок — общие знания по теме, не факты о тебе. <button type="button" class="link-btn inline" id="tpRelesson">пересоздать урок</button></p>`;
 }
 
@@ -1943,6 +1954,19 @@ function bindTopic(d, t, data) {
     if (confirm('Пересоздать урок? Агент напишет его заново (≈ $0.3–0.5), перевод сбросится. Сданный тест останется в журнале.')) startStep(`topics/${enc(t.slug)}/lesson`);
   });
   $('#tpVideo')?.addEventListener('click', () => startStep(`topics/${enc(t.slug)}/video`));
+  const own = async () => {
+    const url = $('#tpOwnUrl').value.trim();
+    if (!url) return;
+    if (data.test && !confirm('Незаконченный тест сбросится — следующий будет по новому видео. Поставить?')) return;
+    $('#tpOwnSet').disabled = true;
+    $('#tpOwnSet').textContent = 'проверяю…';
+    topicResult = null; topicAnswers = {};
+    await startStep(`topics/${enc(t.slug)}/video/own`, { url });
+    const btn = $('#tpOwnSet'); // ошибка — карточка не перерисовалась, кнопку возвращаем
+    if (btn) { btn.disabled = false; btn.textContent = 'Поставить'; }
+  };
+  $('#tpOwnSet')?.addEventListener('click', own);
+  $('#tpOwnUrl')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); own(); } });
   $('#tpTest')?.addEventListener('click', () => { topicResult = null; topicAnswers = {}; startStep(`topics/${enc(t.slug)}/test`, { lang: topicLang }); });
   document.querySelectorAll('[data-tlang]').forEach((b) => b.addEventListener('click', async () => {
     topicLang = b.dataset.tlang;

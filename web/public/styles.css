@@ -803,6 +803,7 @@ ul.bucket li.miss { color: var(--muted); }
 .lesson td, .lesson th { border: 1px solid var(--line); padding: 4px 8px; }
 .tp-video .yt { position: relative; width: 100%; max-width: 560px; aspect-ratio: 16 / 9; }
 .tp-video .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 8px; }
+.tp-own { margin: 4px 0 6px; } .tp-own > summary { list-style: none; cursor: pointer; display: inline; } .tp-own > summary::-webkit-details-marker { display: none; }
 .tp-form fieldset { border: 0; padding: 0; margin: 0 0 12px; }
 .tp-form legend { font-weight: 600; margin-bottom: 4px; }
 .tp-opt { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: 14px; cursor: pointer; }
@@ -904,3 +905,35 @@ a.test-row:hover { border-color: var(--accent); }
 .req-add { margin-top: 10px; }
 .req-add input { flex: 1; min-width: 0; }
 @media (max-width: 600px) { .req-row > summary { flex-direction: column; gap: 6px; } .req-meta { max-width: none; justify-content: flex-start; } }
+
+/* C22 · симулятор A/B-тестов */
+.sim-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.sim-level { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; margin: 0; }
+.sim-level:has(input:checked) { border-color: var(--accent); background: var(--sel); }
+.sim-level span { display: flex; flex-direction: column; gap: 2px; }
+.sim-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sim-ab > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.sim-kpis { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.sim-kpis > div { display: flex; flex-direction: column; min-width: 110px; }
+.sim-kpis strong { font-size: 17px; }
+.sim-calc { padding: 10px 12px; background: var(--line-soft); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; }
+.sim-calc:empty { display: none; }
+.sim-days { gap: 8px; flex-wrap: wrap; align-items: center; }
+.sim-table td, .sim-table th { white-space: nowrap; }
+.sim-chart { margin: 0; }
+.sim-chart svg { width: 100%; height: auto; max-height: 260px; display: block; }
+.sim-band { fill: var(--info-bg); }
+.sim-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.sim-zero { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.sim-plan { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
+.sim-sig { fill: var(--accent); }
+.sim-ax { font-size: 10px; fill: var(--muted); }
+.sim-shots { display: flex; gap: 8px; flex-wrap: wrap; }
+.sim-shots img { max-width: 220px; max-height: 260px; border: 1px solid var(--line); border-radius: 8px; }
+.sim-quote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--line-soft); border-radius: 0 8px 8px 0; }
+.bad-text { color: var(--bad); }
+.banner.good { background: var(--good-bg); color: var(--good); }
+@media (max-width: 640px) { .sim-ab { grid-template-columns: 1fr; } }
+.sim-opt { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 14px; cursor: pointer; }
+.sim-opt input, .sim-level input { width: auto; min-height: 0; margin: 0; flex: 0 0 auto; }
+.sim-level input { margin-top: 3px; }
