@@ -6,7 +6,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-files=$(git add -A --dry-run | sed "s/^add '//;s/'\$//")
+files=$(git add -A --dry-run | sed "s/^add '//;s/'\$//" | grep -v '^$')
+# Чистое дерево: проверять нечего. Без этого xargs запускает grep с пустым аргументом, тот отвечает «нашлось» — ложная тревога
+if [ -z "$files" ]; then echo "чисто: нет новых изменений к публикации"; exit 0; fi
 fail=0
 secrets='sk-ant-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY'
 if hits=$(printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 grep -nIE "$secrets" 2>/dev/null); then
