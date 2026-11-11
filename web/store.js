@@ -49,19 +49,39 @@ function setStatus(a, to, { at, note } = {}) {
 
 const state = { apps: {}, inbox: {} };
 
+// Защита от второго процесса со старым состоянием в памяти (2026-11-11: зависший `node -e require('./web/server.js')`
+// раз в 10 минут сохранял устаревшие заявки поверх свежих). Пишем, только если файл с нашей загрузки / записи никто не менял.
+let knownMtime = 0;
+const fileMtime = () => { try { return fs.statSync(STATE).mtimeMs; } catch { return 0; } };
+
 function load() {
   fs.mkdirSync(path.join(DATA, 'inbox'), { recursive: true });
   if (fs.existsSync(STATE)) {
     const saved = JSON.parse(fs.readFileSync(STATE, 'utf8'));
     state.apps = saved.apps || {};
     state.inbox = saved.inbox || {};
+    knownMtime = fileMtime();
   }
   // Задачи прошлого запуска сервера не переживают перезапуск
   for (const it of Object.values(state.inbox)) if (it.state === 'running') { it.state = 'error'; it.error = 'сервер перезапущен'; }
 }
 
 function save() {
+  const m = fileMtime();
+  if (knownMtime && m && m !== knownMtime) {
+    // Файл изменил кто-то другой: не затираем. Своё состояние — в файл-конфликт, память — с диска
+    const conflict = path.join(DATA, `applications.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    fs.writeFileSync(conflict, JSON.stringify(state, null, 2));
+    console.error(`[store] applications.json изменён другим процессом — не перезаписываю; моё состояние: ${path.basename(conflict)}`);
+    const saved = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+    state.apps = saved.apps || {};
+    state.inbox = saved.inbox || {};
+    knownMtime = m;
+    return false;
+  }
   fs.writeFileSync(STATE, JSON.stringify(state, null, 2));
+  knownMtime = fileMtime();
+  return true;
 }
 
 function app(name) {

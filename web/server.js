@@ -3893,6 +3893,10 @@ app.get('/api/jobs/:id/stream', (req, res) => {
   req.on('close', () => { job.listeners.delete(fn); clearInterval(ping); });
 });
 
+// Порт занят — выходим: процесс без порта не должен крутить фоновые задачи и писать в данные
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`CV Checker Web → http://127.0.0.1:${PORT}`);
+}).on('error', (e) => {
+  console.error(`CV Checker Web: порт ${PORT} недоступен (${e.code || e.message}) — выхожу`);
+  process.exit(1);
 });
