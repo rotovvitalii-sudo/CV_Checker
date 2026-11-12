@@ -1858,6 +1858,7 @@ function renderTopic(d, t, data) {
             .filter(Boolean).map(esc).join(' · ')}</span>
           ${v.own ? '<span class="chip">твоё видео</span>' : ''}
           ${jobBusy(jv) ? '<span class="muted"><span class="spin"></span>ищу другое…</span>' : '<button type="button" class="link-btn inline" id="tpVideo" title="Короткое, свежее, популярное, на английском — по фильтру профиля">другое видео (≈ $0.2)</button>'}</p>
+        ${v.relaxed ? `<p class="muted small" style="margin:0">По фильтру профиля видео не нашлось — найдено с ослабленным: ${esc(v.relaxed.text)} (длина и английский те же).</p>` : ''}
         ${ownForm}
         ${(v.warnings || []).length ? `<p class="warn-text small" style="margin:0">Не по фильтру профиля: ${v.warnings.map(esc).join('; ')} — ты поставил сам.</p>` : ''}
         ${changedAfterPass ? '<p class="muted small" style="margin:0">Тема сдана с прежним видео — пересдавать не обязательно.</p>' : ''}
@@ -1867,7 +1868,7 @@ function renderTopic(d, t, data) {
           : (v.chapters || []).length ? `<details class="more"><summary>Главы · ${v.chapters.length} — по ним и описанию будут 1–2 вопроса</summary><ul class="tight small">${v.chapters.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>`
           : (v.description || '').length >= 200 ? '<p class="muted small" style="margin:0">1–2 вопроса теста — по описанию видео.</p>'
           : '<p class="muted small" style="margin:0">У видео нет глав и описания — вопросы теста только по уроку.</p>'}`
-        : jobBusy(jv) ? '<p class="muted small"><span class="spin"></span>Ищу другое видео — первое не прошло проверку…</p>'
+        : jobBusy(jv) ? `<p class="muted small"><span class="spin"></span>${/^ищу видео/.test(m.video_status || '') ? `${esc(m.video_status[0].toUpperCase() + m.video_status.slice(1))}…` : 'Ищу другое видео — первое не прошло проверку…'}</p>`
         : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.
             <button type="button" class="link-btn inline" id="tpVideo">поискать ещё (≈ $0.2)</button></p>${ownForm}`}
     </section>

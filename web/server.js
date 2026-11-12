@@ -960,7 +960,7 @@ const oneJSON = (t) => {
 
 // Видео существует и это то самое: oEmbed отвечает, название похоже на названное агентом;
 // и проходит фильтр профиля (learning.videoRules): короткое, свежее, с просмотрами, на английском
-async function checkVideo(v) {
+async function checkVideo(v, rules = null) {
   if (!v?.url || !/^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]{6,}/.test(v.url)) return { ok: false, why: 'ссылка не на видео YouTube' };
   try {
     const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(v.url)}&format=json`, { signal: AbortSignal.timeout(10000) });
@@ -971,14 +971,14 @@ async function checkVideo(v) {
     const common = [...B].filter((w) => A.has(w)).length;
     if (B.size && common / Math.min(A.size || 1, B.size) < 0.5) return { ok: false, why: `название не совпадает: «${o.title}»` };
     const details = await videoDetails(v.url);
-    const why = videoRuleMiss(details, o.title);
+    const why = videoRuleMiss(details, o.title, rules);
     return why ? { ok: false, why } : { ok: true, title: o.title, channel: o.author_name, details };
   } catch (e) { return { ok: false, why: `oEmbed недоступен: ${e.message}` }; }
 }
 
 // Пусто — фильтр пройден; иначе причина по-русски. Не удалось прочитать страницу — тоже отказ: фильтр без данных не проверить
-function videoRuleMiss(d, title) {
-  const R = learning.videoRules();
+function videoRuleMiss(d, title, rules = null) {
+  const R = rules || learning.videoRules();
   if (!d?.seconds) return 'не удалось прочитать длительность';
   if (d.seconds > R.max_minutes * 60 + 30) return `длиннее ${R.max_minutes} мин (${d.minutes} мин)`;
   if (!d.published) return 'не удалось прочитать дату публикации';
@@ -995,14 +995,14 @@ function videoRuleMiss(d, title) {
 // Отказ по фильтру (длина, возраст, просмотры, язык) не навсегда: пороги в профиле меняются — такие ссылки проверяются снова
 const RULE_MISS = /^(длиннее|старше|мало просмотров|не на английском)/;
 const hardRejected = (m) => (m.video_rejected || []).filter((x) => !RULE_MISS.test(x.why || ''));
-async function pickVideo(m) {
+async function pickVideo(m, rules = null) {
   const seen = new Set(hardRejected(m).map((x) => x.url));
   const rejected = [];
   for (const v of [m.video, ...(Array.isArray(m.video_candidates) ? m.video_candidates : [])].filter((x) => x?.url).slice(0, 8)) {
     if (seen.has(v.url)) continue;
     seen.add(v.url);
-    const chk = await checkVideo(v);
-    if (chk.ok) return { ...chk, video: v, rejected };
+    const chk = await checkVideo(v, rules);
+    if (chk.ok) return { ...chk, video: v, rejected, rules };
     rejected.push({ url: v.url, title: v.title || '', why: chk.why });
   }
   return { ok: false, why: rejected.length ? rejected.map((x) => x.why).join('; ') : 'видео не найдено', rejected };
@@ -1067,11 +1067,12 @@ async function videoDetails(url) {
 }
 
 function writeVideo(t, m, pick, retrying) {
-  const { video_candidates, ...rest } = m;
-  const next = { ...rest, slug: t.slug, title_en: m.title_en || t.title_en, title_ru: m.title_ru || t.title_ru,
+  const { video_candidates, video_search, ...rest } = m;
+  const next = { ...rest, ...(retrying && video_search ? { video_search } : {}), slug: t.slug, title_en: m.title_en || t.title_en, title_ru: m.title_ru || t.title_ru,
     video: pick.ok ? { ...pick.video, title: pick.title, channel: pick.video.channel || pick.channel, ...pick.details,
-      minutes: pick.details?.minutes || pick.video.minutes || null } : null,
-    video_status: pick.ok ? 'ok' : retrying ? `ищу другое видео (${pick.why})` : pick.why, checked: new Date().toISOString() };
+      minutes: pick.details?.minutes || pick.video.minutes || null,
+      ...(pick.rules?.step ? { relaxed: { step: pick.rules.step, max_years: pick.rules.max_years, min_views: pick.rules.min_views, text: relaxText(pick.rules) } } : {}) } : null,
+    video_status: pick.ok ? 'ok' : retrying ? `ищу другое видео (${pick.why})` : `не нашлось и с ослабленным фильтром: ${pick.why}`, checked: new Date().toISOString() };
   if (pick.rejected.length) next.video_rejected = addRejected(m.video_rejected, pick.rejected);
   if ((next.video?.url || null) !== (learning.meta(t.slug)?.video?.url || null)) learning.dropTest(t.slug); // C21: тест был по прежнему видео
   fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
@@ -1085,24 +1086,75 @@ const topicErr = (status, error) => Object.assign(new Error(error), { status });
 const vacCtx = (name, t) => ({ target: name, topic: t, busy: (k) => busy(store.app(name), k), attach: (k, j) => attach(name, k, j) });
 const sendTopicJob = (res, fn) => Promise.resolve().then(fn).then((x) => res.json(x?.id ? { jobId: x.id } : x), (e) => res.status(e.status || 500).json({ error: e.message }));
 
-// Повторный поиск видео: агент возвращает кандидатов JSON-ом, файл пишет сервер (в фоне агенту скрипты запрещены)
-function videoJob(ctx, bad, keep) {
+// C23 · лестница ослабления фильтра видео (docs/specs/48-video-relax.md): шаг 0 — профиль (урок + один повторный поиск),
+// дальше свежесть и просмотры ослабляются; длина и английский не меняются. На шаге 4 — два прохода, потом стоп.
+const RELAX = [null, { max_years: 5, min_views: 2000 }, { max_years: 7, min_views: 1000 }, { max_years: 10, min_views: 300 }, { max_years: 100, min_views: 0 }];
+const RELAX_PASSES = [2, 1, 1, 1, 2]; // проходов поиска на шаге; на шаге 0 первый проход — кандидаты из урока
+function relaxRules(step) {
+  const R = learning.videoRules();
+  if (!step) return { ...R, step: 0 };
+  const x = RELAX[Math.min(step, RELAX.length - 1)];
+  return { max_minutes: R.max_minutes, max_years: Math.max(R.max_years, x.max_years), min_views: Math.min(R.min_views, x.min_views), step };
+}
+const relaxText = (r) => `${r.max_years >= 100 ? 'любой год' : `до ${String(r.max_years).replace('.', ',')} лет`}, ${r.min_views > 0 ? `от ${r.min_views.toLocaleString('ru-RU')} просмотров` : 'любые просмотры'}`;
+// Следующий проход: тот же шаг, если на нём остались проходы, иначе следующий шаг; null — лестница пройдена
+function nextPass({ step, pass }) {
+  if (pass < RELAX_PASSES[step]) return { step, pass: pass + 1 };
+  return step + 1 < RELAX.length ? { step: step + 1, pass: 1 } : null;
+}
+// Бесплатно перед агентом: видео, отклонённые только за возраст или просмотры, — проходят ли ослабленный фильтр
+async function recheckRelaxed(m, rules) {
+  const again = (m.video_rejected || []).filter((x) => /^(старше|мало просмотров)/.test(x.why || ''));
+  if (!again.length) return null;
+  const pick = await pickVideo({ ...m, video_rejected: (m.video_rejected || []).filter((x) => !again.includes(x)), video: again[0], video_candidates: again.slice(1, 8) }, rules);
+  return pick.ok ? { ...pick, rejected: [] } : null;
+}
+// Шаг лестницы: сначала перепроверка, потом поиск агентом; ctx — тот же, что у урока (вакансия или курс)
+async function videoLadder(ctx, at, bad) {
+  const t = ctx.topic;
+  const metaFile = path.join(learning.dir(t.slug), 'meta.json');
+  const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+  if (m.video) return null; // видео уже есть (своё или найдено иначе) — лестница не нужна
+  const rules = relaxRules(at.step);
+  if (at.step > 0 && at.pass === 1) {
+    const pick = await recheckRelaxed(m, rules);
+    if (pick) {
+      writeVideo(t, { ...m, video_rejected: (m.video_rejected || []).filter((x) => x.url !== pick.video.url) }, pick, false);
+      return null;
+    }
+  }
+  fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_status: `ищу видео: ${at.step ? `шаг ${at.step} из ${RELAX.length - 1} (${relaxText(rules)})` : 'повторный поиск'}`,
+    video_search: { step: at.step, pass: at.pass, at: new Date().toISOString() } }, null, 2)}\n`);
+  return videoJob(ctx, bad, null, at);
+}
+
+// Повторный поиск видео: агент возвращает кандидатов JSON-ом, файл пишет сервер (в фоне агенту скрипты запрещены).
+// at — проход лестницы C23 ({step, pass}); без него (замена готового видео) — один проход по профилю
+function videoJob(ctx, bad, keep, at = null) {
   const t = ctx.topic;
   const metaFile = path.join(learning.dir(t.slug), 'meta.json');
   const m0 = learning.meta(t.slug) || {};
   const job = runJob({ kind: 'lessonvideo', target: ctx.target,
-    prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: learning.videoRules(), rejected: hardRejected(m0) }),
+    prompt: prompts.topicVideo({ slug: t.slug, title_en: t.title_en, bad, rules: at ? relaxRules(at.step) : learning.videoRules(), rejected: hardRejected(m0) }),
     logFile: path.join(learning.dir(t.slug), 'agent-video.log'),
     onDone: async (j) => {
       const m = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
       let c = [];
       try { c = (oneJSON(j.finalText).candidates || []).filter((x) => x?.url); } catch {}
-      const pick = await pickVideo({ ...m, video: c[0] || null, video_candidates: c.slice(1) });
+      if (at && m.video) return; // пока искали, видео появилось (например, своё — C21): не трогаем
+      const rules = at ? relaxRules(at.step) : null;
+      const pick = await pickVideo({ ...m, video: c[0] || null, video_candidates: c.slice(1) }, rules);
       // Ничего не прошло — прежнее видео (если было) остаётся, а не пропадает
       if (!pick.ok && keep) {
         fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video: keep, video_status: `другое не нашлось: ${pick.why}`,
           video_rejected: addRejected(m.video_rejected, pick.rejected), checked: new Date().toISOString() }, null, 2)}\n`);
-      } else writeVideo(t, m, pick, false);
+        return;
+      }
+      const next = !pick.ok && at ? nextPass(at) : null;
+      writeVideo(t, m, pick, !!next);
+      // C23: не нашлось — следующий проход лестницы отдельной задачей (эта уже завершается)
+      // ждём здесь: следующая задача прикрепляется до того, как эта отметится завершённой, — экран не теряет поиск между проходами
+      if (next) await videoLadder(ctx, next, pick.why).catch((e) => console.error('video ladder:', e.message));
     } });
   job.topic = t.slug;
   job.label = ctx.label;
@@ -1136,9 +1188,9 @@ function lessonJob(ctx) {
         return;
       }
       const pick = await pickVideo(m);
-      writeVideo(t, m, pick, !pick.ok && pick.rejected.length > 0);
-      // Ни одно не прошло — одна повторная попытка поиска отдельной задачей (не ждём её здесь: слотов агента всего два)
-      if (!pick.ok && pick.rejected.length) videoJob(ctx, pick.why, null);
+      writeVideo(t, m, pick, !pick.ok);
+      // Ни одно не прошло (или агент не дал кандидатов) — лестница C23 отдельными задачами (не ждём: слотов агента всего два)
+      if (!pick.ok) await videoLadder(ctx, { step: 0, pass: 2 }, pick.why).catch((e) => console.error('video ladder:', e.message));
     },
   });
   job.topic = t.slug;
@@ -1164,6 +1216,12 @@ async function anotherVideo(ctx) {
     }
   }
   const why = m.video ? 'нужно другое видео — по фильтру' : (m.video_status || 'видео не найдено');
+  // C23: видео нет — по лестнице; строгие проходы уже были (есть отклонённые) — сразу с шага 1 (сначала бесплатная перепроверка).
+  // Замена готового видео — один проход по профилю, прежнее остаётся, если другое не нашлось
+  if (!m.video) {
+    const job = await videoLadder(ctx, (m.video_rejected || []).length ? { step: 1, pass: 1 } : { step: 0, pass: 1 }, why);
+    return job || { ok: true, rechecked: true };
+  }
   // Текущее видео — в отклонённые, чтобы агент не вернул его же
   if (m.video) fs.writeFileSync(metaFile, `${JSON.stringify({ ...m, video_rejected: addRejected(m.video_rejected, [{ url: m.video.url, title: m.video.title, why: m.video.own ? 'своё видео заменено поиском' : 'заменено вручную' }]) }, null, 2)}\n`);
   return videoJob(ctx, why, m.video);
