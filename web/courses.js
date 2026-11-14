@@ -166,6 +166,8 @@ function lessonContext(slug, lessonSlug) {
     prev: ls.slice(0, i).map((l) => l.title_en), next: ls.slice(i + 1).map((l) => l.title_en), glossary: c.glossary || [], materials: materialRefs(slug) };
 }
 
+// Верный вариант — первый в options (2026-11-14: Haiku путал номер ответа); старый формат с answer тоже принимается
+const ansOf = (q) => (q.answer === undefined || q.answer === null ? 0 : Number(q.answer));
 // ---------- пробный экзамен ----------
 const examFile = (slug) => path.join(cdir(slug), 'exam-current.json');
 const attemptsFile = (slug) => path.join(cdir(slug), 'exam-attempts.jsonl');
@@ -175,11 +177,11 @@ function readAttempts(slug) {
 function normExam(raw, c) {
   const known = new Set(lessons(c).map((l) => l.slug));
   const qs = (Array.isArray(raw?.questions) ? raw.questions : []).filter((q) => q && q.q && Array.isArray(q.options) && q.options.length === 4
-    && Number.isInteger(Number(q.answer)) && Number(q.answer) >= 0 && Number(q.answer) < 4);
+    && Number.isInteger(ansOf(q)) && ansOf(q) >= 0 && ansOf(q) < 4);
   if (qs.length < Math.round(c.exam.questions * 0.8)) throw new Error(`экзамен: ${qs.length} корректных вопросов из ${c.exam.questions}`);
   return qs.slice(0, c.exam.questions).map((q) => {
     const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
-    return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()), answer: order.indexOf(Number(q.answer)),
+    return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()), answer: order.indexOf(ansOf(q)),
       explain: String(q.explain || '').trim(), lesson: known.has(q.lesson) ? q.lesson : null };
   });
 }
@@ -221,11 +223,11 @@ const pastExamQuestions = (slug) => readAttempts(slug).flatMap((a) => a.question
 const reviewFile = (slug) => path.join(learning.dir(slug), 'review.json');
 function normReview(raw) {
   const qs = (Array.isArray(raw?.questions) ? raw.questions : []).filter((q) => q && q.q && Array.isArray(q.options) && q.options.length === 4
-    && Number.isInteger(Number(q.answer)) && Number(q.answer) >= 0 && Number(q.answer) < 4).slice(0, 5);
+    && Number.isInteger(ansOf(q)) && ansOf(q) >= 0 && ansOf(q) < 4).slice(0, 5);
   if (!String(raw?.summary || '').trim() || qs.length < 3) throw new Error('повторение: нет выжимки или вопросов');
   return { at: now(), summary: String(raw.summary).trim(), questions: qs.map((q) => {
     const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
-    return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()), answer: order.indexOf(Number(q.answer)), explain: String(q.explain || '').trim() };
+    return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()), answer: order.indexOf(ansOf(q)), explain: String(q.explain || '').trim() };
   }) };
 }
 function publicReview(slug) {

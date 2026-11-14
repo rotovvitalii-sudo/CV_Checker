@@ -122,16 +122,18 @@ function readiness(outDir) {
   return { passed, total: t.topics.length };
 }
 
+// Верный вариант — первый в options (2026-11-14: Haiku путал номер ответа); старый формат с answer тоже принимается
+const ansOf = (q) => (q.answer === undefined || q.answer === null ? 0 : Number(q.answer));
 // ---------- тест ----------
 // Варианты перемешиваем на сервере (модели любят ставить верный первым); верные ответы клиенту не уходят
 function normTest(raw) {
   const qs = (Array.isArray(raw?.questions) ? raw.questions : []).filter((q) => q && q.q && Array.isArray(q.options) && q.options.length === 4
-    && Number.isInteger(Number(q.answer)) && Number(q.answer) >= 0 && Number(q.answer) < 4).slice(0, QUESTIONS);
+    && Number.isInteger(ansOf(q)) && ansOf(q) >= 0 && ansOf(q) < 4).slice(0, QUESTIONS);
   if (qs.length < 6) throw new Error(`тест: ${qs.length} корректных вопросов из ${QUESTIONS}`);
   return qs.map((q) => {
     const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
     return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()),
-      answer: order.indexOf(Number(q.answer)), explain: String(q.explain || '').trim(), section: String(q.section || '').trim(),
+      answer: order.indexOf(ansOf(q)), explain: String(q.explain || '').trim(), section: String(q.section || '').trim(),
       from: 'lesson' };
   });
 }
