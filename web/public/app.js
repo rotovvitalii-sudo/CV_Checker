@@ -1842,8 +1842,7 @@ function renderTopic(d, t, data) {
   const ownForm = jobBusy(jv) ? '' : `<details class="tp-own"><summary class="link-btn inline">${v ? 'вставить свою ссылку' : 'вставить свою ссылку на YouTube'}</summary>
       <div class="row" style="margin:6px 0"><input id="tpOwnUrl" type="url" placeholder="https://youtu.be/…" style="flex:1;min-width:0">
         <button type="button" class="small" id="tpOwnSet">Поставить</button></div>
-      <p class="hint" style="margin:0">Бесплатно, без агента. Фильтр профиля только предупредит. Незаконченный тест сбросится, следующий — по этому видео.</p></details>`;
-  const changedAfterPass = st.passed && v?.set_at && st.passedAt && Date.parse(v.set_at) > Date.parse(st.passedAt);
+      <p class="hint" style="margin:0">Бесплатно, без агента. Фильтр профиля только предупредит.</p></details>`;
   return `<div class="row tp-bar">${langBar}
       ${jobBusy(jtr) ? '<span class="muted small"><span class="spin"></span>перевожу…</span>' : jtr?.state === 'error' ? `<span class="error small">${esc(jtr.error)}</span>` : ''}
       <span class="muted small">${!st.hasRu && data.lang === 'en' ? 'перевод ≈ $0.003, термины останутся английскими' : ''}</span>
@@ -1861,15 +1860,12 @@ function renderTopic(d, t, data) {
         ${v.relaxed ? `<p class="muted small" style="margin:0">По фильтру профиля видео не нашлось — найдено с ослабленным: ${esc(v.relaxed.text)} (длина и английский те же).</p>` : ''}
         ${ownForm}
         ${(v.warnings || []).length ? `<p class="warn-text small" style="margin:0">Не по фильтру профиля: ${v.warnings.map(esc).join('; ')} — ты поставил сам.</p>` : ''}
-        ${changedAfterPass ? '<p class="muted small" style="margin:0">Тема сдана с прежним видео — пересдавать не обязательно.</p>' : ''}
         ${m.video_status && m.video_status !== 'ok' ? `<p class="muted small" style="margin:0">${esc(m.video_status)}</p>` : ''}
-        ${(v.key_points || []).length ? `<p class="muted small" style="margin:0">Ключевые мысли (по ${v.source === 'transcript' ? 'субтитрам' : 'описанию и главам'}) — по ним будут вопросы:</p>
-          <ul class="tight small">${v.key_points.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>`
-          : (v.chapters || []).length ? `<details class="more"><summary>Главы · ${v.chapters.length} — по ним и описанию будут 1–2 вопроса</summary><ul class="tight small">${v.chapters.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>`
-          : (v.description || '').length >= 200 ? '<p class="muted small" style="margin:0">1–2 вопроса теста — по описанию видео.</p>'
-          : '<p class="muted small" style="margin:0">У видео нет глав и описания — вопросы теста только по уроку.</p>'}`
+        <p class="muted small" style="margin:0">Видео — для закрепления, по желанию: тест только по тексту урока.</p>
+        ${(v.key_points || []).length ? `<details class="more"><summary>Ключевые мысли видео · ${v.key_points.length}</summary><ul class="tight small">${v.key_points.map((k) => `<li>${esc(k)}</li>`).join('')}</ul></details>`
+          : (v.chapters || []).length ? `<details class="more"><summary>Главы · ${v.chapters.length}</summary><ul class="tight small">${v.chapters.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>` : ''}`
         : jobBusy(jv) ? `<p class="muted small"><span class="spin"></span>${/^ищу видео/.test(m.video_status || '') ? `${esc(m.video_status[0].toUpperCase() + m.video_status.slice(1))}…` : 'Ищу другое видео — первое не прошло проверку…'}</p>`
-        : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''} — тест только по уроку.
+        : `<p class="muted small">Видео не найдено${m.video_status && m.video_status !== 'видео не найдено' ? ` (${esc(m.video_status)})` : ''}.
             <button type="button" class="link-btn inline" id="tpVideo">поискать ещё (≈ $0.2)</button></p>${ownForm}`}
     </section>
     ${insBlock}
@@ -1882,7 +1878,7 @@ function renderTopic(d, t, data) {
         ${res.wrong.length ? `<ol class="tp-wrong">${res.wrong.map((w) => `<li><strong>${esc(w.q)}</strong>
           <div class="small">Твой ответ: ${w.chosen != null ? esc(w.options[w.chosen]) : '—'} · верно: <strong>${esc(w.options[w.correct])}</strong></div>
           <div class="muted small">${esc(w.explain)}${w.section ? ` · раздел «${esc(w.section)}»` : ''}</div></li>`).join('')}</ol>` : ''}` : ''}
-      ${test ? `<form id="tpForm" class="tp-form">${test.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}${q.from === 'video' ? ' <span class="chip">видео</span>' : ''}</legend>
+      ${test ? `<form id="tpForm" class="tp-form">${test.questions.map((q, n) => `<fieldset><legend>${n + 1}. ${esc(q.q)}</legend>
           ${q.options.map((o, k) => `<label class="tp-opt"><input type="radio" name="${esc(q.id)}" value="${k}" ${topicAnswers[q.id] === k ? 'checked' : ''}> ${esc(o)}</label>`).join('')}</fieldset>`).join('')}
           <div class="row"><button type="submit" class="primary small" id="tpSubmit">Проверить</button><span class="hint" style="margin:0" id="tpLeft"></span></div></form>`
         : jobBusy(jt) ? jobBlock(jt)
@@ -1958,7 +1954,6 @@ function bindTopic(d, t, data) {
   const own = async () => {
     const url = $('#tpOwnUrl').value.trim();
     if (!url) return;
-    if (data.test && !confirm('Незаконченный тест сбросится — следующий будет по новому видео. Поставить?')) return;
     $('#tpOwnSet').disabled = true;
     $('#tpOwnSet').textContent = 'проверяю…';
     topicResult = null; topicAnswers = {};

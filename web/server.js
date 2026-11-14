@@ -1074,7 +1074,6 @@ function writeVideo(t, m, pick, retrying) {
       ...(pick.rules?.step ? { relaxed: { step: pick.rules.step, max_years: pick.rules.max_years, min_views: pick.rules.min_views, text: relaxText(pick.rules) } } : {}) } : null,
     video_status: pick.ok ? 'ok' : retrying ? `ищу другое видео (${pick.why})` : `не нашлось и с ослабленным фильтром: ${pick.why}`, checked: new Date().toISOString() };
   if (pick.rejected.length) next.video_rejected = addRejected(m.video_rejected, pick.rejected);
-  if ((next.video?.url || null) !== (learning.meta(t.slug)?.video?.url || null)) learning.dropTest(t.slug); // C21: тест был по прежнему видео
   fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
 }
 
@@ -1250,7 +1249,6 @@ async function ownVideo(ctx, raw) {
   const next = { ...rest, video: { url, title: o.title, channel: o.author_name, ...details, key_points: [], source: 'own', own: true,
     set_at: new Date().toISOString(), warnings: miss ? [miss] : [] }, video_status: 'ok', checked: new Date().toISOString(),
   video_rejected: prev && prev.url !== url ? addRejected(rejected, [{ url: prev.url, title: prev.title, why: 'заменено своим' }]) : rejected };
-  if (!prev || prev.url !== url) learning.dropTest(t.slug);
   fs.writeFileSync(path.join(learning.dir(t.slug), 'meta.json'), `${JSON.stringify(next, null, 2)}\n`);
   return { ok: true, video: next.video };
 }
@@ -1280,13 +1278,13 @@ function topicTestJob(ctx, lang) {
   if (ctx.busy('topictest')) throw topicErr(409, 'тест уже составляется');
   const text = learning.lesson(t.slug, 'en');
   if (!text) throw topicErr(400, 'сначала урок');
-  const video = learning.meta(t.slug)?.video || null; // текущее видео — вопросы по нему
+  // Вопросы только по тексту урока — видео в тест не идёт
   const job = runJob({
     kind: 'topictest', target: ctx.target, system: prompts.TEST_SYSTEM,
-    prompt: prompts.topicTest({ lessonText: text, video, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
+    prompt: prompts.topicTest({ lessonText: text, past: learning.pastQuestions(t.slug), n: learning.QUESTIONS,
       lang: lang === 'ru' ? 'ru' : 'en', numeric: ctx.course?.kind === 'domain' }),
     logFile: path.join(learning.dir(t.slug), 'test.log'),
-    onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText)), video?.url || null),
+    onDone: async (j) => learning.saveTest(t.slug, learning.normTest(oneJSON(j.finalText)), null),
   });
   job.topic = t.slug;
   job.label = ctx.label;

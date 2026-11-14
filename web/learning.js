@@ -132,7 +132,7 @@ function normTest(raw) {
     const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
     return { id: crypto.randomUUID().slice(0, 6), q: String(q.q).trim(), options: order.map((i) => String(q.options[i]).trim()),
       answer: order.indexOf(Number(q.answer)), explain: String(q.explain || '').trim(), section: String(q.section || '').trim(),
-      from: q.from === 'video' ? 'video' : 'lesson' };
+      from: 'lesson' };
   });
 }
 // video — url видео, по которому составлен тест (C21: после замены видео незаконченный тест сбрасывается)
