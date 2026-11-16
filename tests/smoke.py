@@ -148,7 +148,7 @@ def api(base):
     ok(code == 404, f"неизвестный курс → {code}")
     # C22: симулятор — каждый тест читается, истина не видна до решения
     sm = json.loads(get(base, "/api/sim/ab")[2])
-    ok(set(sm["levels"]) == {"1", "2", "3", "4"}, "симулятор: 4 уровня")
+    ok(set(sm["levels"]) == {"1", "2", "3", "4", "5"}, "симулятор: 5 уровней (5 — байес)")
     for s in sm["list"]:
         code, _, body = get(base, f"/api/sim/ab/{q(s['id'])}")
         if ok(code == 200, f"симуляция {s['id']} → {code}"):
@@ -158,6 +158,16 @@ def api(base):
                 ok("days" not in (sv.get("run") or {}), f"симуляция {s['id']}: данные по дням уходят клиенту")
     code, _, _ = get(base, "/api/sim/ab/nope-nope")
     ok(code == 404, f"неизвестная симуляция → {code}")
+    # C24: воронки — каждая читается, правда не видна до ответа
+    fl = json.loads(get(base, "/api/sim/funnel")[2])
+    for f in fl["list"]:
+        code, _, body = get(base, f"/api/sim/funnel/{q(f['id'])}")
+        if ok(code == 200, f"воронка {f['id']} → {code}"):
+            fv = json.loads(body)
+            if not fv.get("answer"):
+                ok("truth" not in fv, f"воронка {f['id']}: правда видна до ответа")
+    code, _, _ = get(base, "/api/sim/funnel/nope-nope")
+    ok(code == 404, f"неизвестная воронка → {code}")
     items =json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:

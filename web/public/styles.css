@@ -937,3 +937,25 @@ a.test-row:hover { border-color: var(--accent); }
 .sim-opt { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 14px; cursor: pointer; }
 .sim-opt input, .sim-level input { width: auto; min-height: 0; margin: 0; flex: 0 0 auto; }
 .sim-level input { margin-top: 3px; }
+/* C24 · байес и воронки */
+#simDesign .bay-only { display: none; }
+#simDesign.is-bayes .bay-only { display: inline; }
+#simDesign.is-bayes .cls-only { display: none; }
+.sim-bar { fill: var(--accent); opacity: .75; }
+.sim-rope { fill: var(--line-soft); }
+.sim-line2 { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 5 3; }
+.c-practice { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.c-prac { border-top: 1px dashed var(--line); }
+.fz-steps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fz-step { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; background: var(--panel); }
+.fz-step button { padding: 0 4px; min-height: 0; border: 0; background: none; color: var(--muted); }
+.fz-bars { display: flex; flex-direction: column; gap: 6px; }
+.fz-bar { display: grid; grid-template-columns: minmax(120px, 220px) 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+.fz-bar .track { background: var(--line-soft); border-radius: 6px; height: 18px; overflow: hidden; }
+.fz-bar .fill { background: var(--accent); height: 100%; opacity: .8; }
+.fz-log td, .fz-log th { white-space: nowrap; font-size: 12px; }
+@media (max-width: 640px) { .fz-bar { grid-template-columns: 1fr; } }
+.fn-l1 { fill: none; stroke: #C2410C; stroke-width: 2; } .fn-l2 { fill: none; stroke: #0E7490; stroke-width: 2; }
+.fn-l3 { fill: none; stroke: #7C3AED; stroke-width: 2; } .fn-l4 { fill: none; stroke: #15803D; stroke-width: 2; } .fn-l5 { fill: none; stroke: #9CA3AF; stroke-width: 2; }
+.fn-key { font-weight: 700; } .fn-key.sim-line { color: var(--accent); } .fn-key.fn-l1 { color: #C2410C; } .fn-key.fn-l2 { color: #0E7490; }
+.fn-key.fn-l3 { color: #7C3AED; } .fn-key.fn-l4 { color: #15803D; } .fn-key.fn-l5 { color: #9CA3AF; }

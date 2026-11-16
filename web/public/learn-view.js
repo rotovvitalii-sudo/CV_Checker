@@ -44,7 +44,7 @@ function learnCoursesHtml(d) {
       <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>${esc(c.title)}</strong>
         <span class="row" style="gap:6px"><span class="chip">${esc(d.kinds[c.kind] || c.kind)}</span>
           <span class="pill ${c.done ? 'good' : c.status === 'draft' ? 'neutral' : 'info'}">${c.done ? 'пройден' : c.status === 'draft' ? 'структура' : `${c.passed}/${c.total} уроков`}</span></span></div>
-      <p class="muted small" style="margin:4px 0 0">${esc(c.goal)} · ${c.hours_per_week} ч в неделю${c.examPassed ? ' · экзамен сдан' : ''}</p>
+      <p class="muted small" style="margin:4px 0 0">${esc(c.goal)} · ${c.hours_per_week} ч в неделю${c.practiceTotal ? ` · практика ${c.practiceDone}/${c.practiceTotal}` : ''}${c.examPassed ? ' · экзамен сдан' : ''}</p>
       ${c.total ? `<div class="c-bar" style="margin-top:6px"><span style="width:${Math.round((c.passed / c.total) * 100)}%"></span></div>` : ''}</a>`).join('')}</div>`;
 }
 
@@ -156,7 +156,11 @@ function courseDraftHtml(d, oBusy) {
           <button type="button" class="link-btn inline" data-ldel="${mi}:${li}">удалить</button></div>
         <input class="small c-goal" data-lg="${mi}:${li}" value="${esc(l.goal || '')}" placeholder="цель урока" aria-label="Цель урока">
         ${(l.covers || []).length ? `<div class="muted small">${l.covers.map(esc).join(' · ')}</div>` : ''}</li>`).join('')}</ol>
-      <button type="button" class="link-btn inline small" data-ladd="${mi}">+ урок</button></div>`).join('')}</div>
+      <button type="button" class="link-btn inline small" data-ladd="${mi}">+ урок</button>
+      ${(m.practice || []).length ? `<ul class="c-practice">${m.practice.map((x, pi) => `<li><span class="chip">практика · ${x.sim === 'funnel' ? 'воронка' : 'A/B'}</span> ${esc(x.title)}
+        <button type="button" class="link-btn inline" data-pdel="${mi}:${pi}">удалить</button></li>`).join('')}</ul>` : ''}
+      <div class="row" style="gap:6px;margin-top:4px"><select data-padd-sel="${mi}" aria-label="Задание в симуляторе"><option value="">+ практика в симуляторе…</option>
+        ${Object.entries(d.presets || {}).map(([k, v]) => `<option value="${k}">${esc(v.title)}</option>`).join('')}</select></div></div>`).join('')}</div>
     <div class="row"><button type="button" class="link-btn inline small" id="cModAdd">+ модуль</button></div>
     <div class="row" style="flex-wrap:wrap">
       <button type="button" class="small" id="cSave" ${courseEdit ? '' : 'disabled'}>Сохранить правки</button>
@@ -170,7 +174,7 @@ function coursePlanHtml(d) {
   const left = Math.round(p.minutesLeft / 60 * 10) / 10;
   return `<section class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span><strong>Неделя ${p.week}</strong> · по плану ${p.perWeek} ${plural(p.perWeek, ['урок', 'урока', 'уроков'])} в неделю (${d.course.hours_per_week} ч), курс ≈ ${p.weeksNeeded} нед.</span>
-      <span class="muted small">осталось ≈ ${left} ч${p.expired ? ` · повторить: ${p.expired}` : ''}${p.behind && !p.done ? ` · отстаёшь на ${p.behind}` : ''}</span></div>
+      <span class="muted small">осталось ≈ ${left} ч${p.practiceTotal ? ` · практика ${p.practiceDone}/${p.practiceTotal}` : ''}${p.expired ? ` · повторить: ${p.expired}` : ''}${p.behind && !p.done ? ` · отстаёшь на ${p.behind}` : ''}</span></div>
     <div class="c-bar" style="margin-top:8px"><span style="width:${p.total ? Math.round((p.passed / p.total) * 100) : 0}%"></span></div></section>`;
 }
 
@@ -180,13 +184,19 @@ function courseLessonsHtml(d) {
   const byMod = [];
   for (const l of p.lessons) { if (!byMod[l.mi]) byMod[l.mi] = { title: l.module, list: [] }; byMod[l.mi].list.push(l); }
   const title = (t) => (topicLang === 'ru' ? t.title_ru : t.title_en) || t.title_en;
-  return `<section class="card iv-sec topics">${byMod.filter(Boolean).map((m) => `<h3 class="st-h">${esc(m.title)}</h3>
+  const pr = (mi) => (p.practice || []).filter((x) => x.mi === mi);
+  const prHtml = (x) => `<li class="tp-row c-prac"><div class="tp-main"><span class="chip">${x.sim === 'funnel' ? 'практика · воронка' : 'практика · A/B'}</span> <strong>${esc(x.title)}</strong>
+      ${x.done ? '<span class="pill good">засчитано</span>' : x.tries.length ? `<span class="pill info">попыток: ${x.tries.length}</span>` : '<span class="pill neutral">не начато</span>'}</div>
+    <div class="row small" style="gap:10px;margin-top:4px">${x.current ? `<a href="#/learn/sim/${x.sim === 'funnel' ? 'f/' : ''}${enc(x.current)}">${x.done ? 'открыть' : 'продолжить'}</a>` : ''}
+      ${x.done ? '' : `<button type="button" class="link-btn inline" data-pstart="${esc(x.id)}">${x.tries.length ? 'новая ситуация' : 'начать задание'}</button>`}
+      <span class="muted">${x.sim === 'funnel' ? 'Haiku ≈ $0.001 + разбор ≈ $0.01' : 'Haiku ≈ $0.001 + разбор ≈ $0.01'} · засчитывается первое верное решение</span></div></li>`;
+  return `<section class="card iv-sec topics">${byMod.map((m, mi) => (m ? { ...m, mi } : null)).filter(Boolean).map((m) => `<h3 class="st-h">${esc(m.title)}</h3>
     <ul class="tp-list">${m.list.map((t) => `<li class="tp-row ${openTopic === t.slug ? 'open' : ''}">
       <div class="tp-main"><button type="button" class="link-btn tp-title" data-ctopic="${esc(t.slug)}">${esc(title(t))}</button> ${topicPill(t)}
         ${week.has(t.slug) && !t.passed ? '<span class="chip info">на этой неделе</span>' : ''}${t.reused ? '<span class="chip">из библиотеки</span>' : ''}</div>
       ${t.goal ? `<div class="muted small">${esc(t.goal)}</div>` : ''}
       ${openTopic === t.slug ? '<div id="topicPanel" class="topic-panel"><p class="muted small"><span class="spin"></span>Загружаю урок…</p></div>' : ''}
-    </li>`).join('')}</ul>`).join('')}</section>`;
+    </li>`).join('')}${pr(m.mi).map(prHtml).join('')}</ul>`).join('')}</section>`;
 }
 
 function courseExamHtml(d) {
@@ -259,6 +269,12 @@ function bindCourse(d) {
   }));
   if (openTopic && $('#topicPanel')) loadCourseTopic(d, reload);
   bindExam(d, base, reload);
+  // C24: задание в симуляторе — новая ситуация по заготовке
+  document.querySelectorAll('[data-pstart]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { const r = await api(`${base}/practice/${enc(b.dataset.pstart)}/start`, { method: 'POST', body: {} }); simMeta = null; location.hash = `#/learn/sim/${r.sim === 'funnel' ? 'f/' : ''}${r.id}`; }
+    catch (e) { alert(e.message); b.disabled = false; }
+  }));
   // Материалы
   $('#cMat')?.addEventListener('change', async (e) => {
     for (const f of e.target.files) {
@@ -304,6 +320,13 @@ function bindCourseDraft(d, base, reload) {
   act('[data-ladd]', (b) => { const t = prompt('Урок (название по-английски)'); if (t) mods()[b.dataset.ladd].lessons.push({ title_en: t, title_ru: t, goal: '' }); });
   act('[data-mdel]', (b) => { if (confirm('Удалить модуль со всеми уроками?')) mods().splice(Number(b.dataset.mdel), 1); });
   act('[data-mup]', (b) => { const i = Number(b.dataset.mup); const ms = mods(); if (i > 0) [ms[i - 1], ms[i]] = [ms[i], ms[i - 1]]; });
+  act('[data-pdel]', (b) => { const [m, i] = at(b.dataset.pdel); mods()[m].practice.splice(i, 1); });
+  document.querySelectorAll('[data-padd-sel]').forEach((sel) => sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const m = mods()[sel.dataset.paddSel];
+    m.practice = [...(m.practice || []), { preset: sel.value, sim: d.presets[sel.value].sim, title: d.presets[sel.value].title }];
+    redraw();
+  }));
   $('#cModAdd')?.addEventListener('click', () => { const t = prompt('Модуль'); if (t) { mods().push({ title: t, lessons: [] }); redraw(); } });
   const saveStruct = async () => {
     if (!courseEdit) return true;

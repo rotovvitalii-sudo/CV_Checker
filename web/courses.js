@@ -11,6 +11,57 @@ const LEVELS = { beginner: 'с нуля', intermediate: 'средний', advanc
 const LESSON_MIN = 30; // урок + видео + тест
 const EXAM = { role: { questions: 40, minutes: 30, pass: 0.85 }, domain: { questions: 40, minutes: 45, pass: 0.8 }, skill: { questions: 30, minutes: 30, pass: 0.8 } };
 const GRACE_S = 60; // запас на отправку после таймера
+const PRACTICE_MIN = 20; // задание в симуляторе
+
+// C24 · практика в модулях: заготовки заданий в симуляторах (A/B — C22, воронки — C24)
+const PRESETS = {
+  'ab-clean': { sim: 'ab', level: 1, title: 'A/B: чистый тест — дизайн и чтение' },
+  'ab-power': { sim: 'ab', level: 2, title: 'A/B: мощность и подглядывание' },
+  'ab-traps': { sim: 'ab', level: 3, title: 'A/B: ловушки данных (SRM, новизна, сегменты)' },
+  'ab-tradeoff': { sim: 'ab', level: 4, title: 'A/B: компромисс — главная метрика против защитной' },
+  'bayes-any': { sim: 'ab', level: 5, title: 'Байес: любая ситуация' },
+  'bayes-prior': { sim: 'ab', level: 5, trap: 'b_prior', title: 'Байес: prior из прошлых тестов и апостериорное' },
+  'bayes-loss': { sim: 'ab', level: 5, traps: ['b_small', 'b_win'], title: 'Байес: решение по ожидаемым потерям' },
+  'bayes-peek': { sim: 'ab', level: 5, trap: 'b_peek', title: 'Байес: смотреть каждый день и остановиться по правилу' },
+  'bayes-rope': { sim: 'ab', level: 5, trap: 'b_flat', title: 'Байес: ROPE и вывод «разницы нет»' },
+  'bayes-revenue': { sim: 'ab', level: 5, trap: 'b_revenue', title: 'Байес: выручка на посетителя' },
+  'funnel-any': { sim: 'funnel', title: 'Воронка: собрать из событий и найти провал' },
+  'funnel-tracking': { sim: 'funnel', main: 'tracking', title: 'Воронка: провал в поведении или в трекинге?' },
+  'funnel-window': { sim: 'funnel', distract: 'slow', title: 'Воронка: окно конверсии и медленный шаг' },
+  'funnel-segment': { sim: 'funnel', main: 'release', title: 'Воронка: провал у одного сегмента после релиза' },
+};
+function normPractice(arr, old = []) {
+  const byId = Object.fromEntries((old || []).map((x) => [x.id, x]));
+  return (Array.isArray(arr) ? arr : []).map((x) => {
+    const preset = PRESETS[x?.preset] ? x.preset : null;
+    if (!preset) return null;
+    const id = /^[a-z0-9]{6}$/.test(x?.id || '') ? x.id : crypto.randomUUID().replace(/-/g, '').slice(0, 6);
+    return { ...(byId[id] || {}), id, preset, sim: PRESETS[preset].sim, title: String(x.title || byId[id]?.title || PRESETS[preset].title).trim().slice(0, 140),
+      goal: String(x.goal ?? byId[id]?.goal ?? '').trim().slice(0, 300) };
+  }).filter(Boolean).slice(0, 4);
+}
+const practiceItems = (c) => (c.modules || []).flatMap((m, mi) => (m.practice || []).map((p) => ({ ...p, module: m.title, mi })));
+function practiceStatus(c, p) {
+  const st = c.practiceState?.[p.id] || {};
+  return { done: !!st.done, doneAt: st.done?.at || null, simId: st.done?.simId || null, tries: st.tries || [], current: (st.tries || []).slice(-1)[0] || null };
+}
+// Попытка задания: запоминаем симуляцию; засчитано — первое верное решение
+function practiceTry(slug, pid, simId) {
+  const c = get(slug);
+  if (!practiceItems(c).some((p) => p.id === pid)) throw err(404, 'нет такого задания');
+  c.practiceState = c.practiceState || {};
+  const st = (c.practiceState[pid] = c.practiceState[pid] || { tries: [] });
+  st.tries = [...(st.tries || []), simId].slice(-20);
+  save(slug, c);
+}
+function practiceResult(slug, pid, simId, correct) {
+  const c = get(slug);
+  const st = c.practiceState?.[pid];
+  if (!st || st.done || !correct) return false;
+  st.done = { simId, at: now() };
+  save(slug, c);
+  return true;
+}
 
 const readJSON = (p, d = null) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; } };
 const writeJSON = (p, v) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, `${JSON.stringify(v, null, 2)}\n`); };
@@ -55,6 +106,7 @@ function normOutline(raw) {
         goal: String(l.goal || '').trim().slice(0, 400), covers: (Array.isArray(l.covers) ? l.covers : []).map((x) => String(x).slice(0, 160)).slice(0, 8),
         minutes: Math.min(30, Math.max(10, Number(l.minutes) || 20)) };
     }).filter((l) => l && l.title_en),
+    practice: normPractice(m?.practice),
   })).filter((m) => m.title && m.lessons.length);
   const sources = (Array.isArray(raw?.sources) ? raw.sources : []).filter((x) => /^https?:\/\//.test(x?.url || '')).map((x) => ({ title: String(x.title || x.url).slice(0, 160), url: x.url })).slice(0, 15);
   return { modules, sources, glossary: (Array.isArray(raw?.glossary) ? raw.glossary : []).map(String).slice(0, 60) };
@@ -64,6 +116,7 @@ function normOutline(raw) {
 function setModules(slug, modules) {
   const c = get(slug);
   const old = Object.fromEntries(lessons(c).map((l) => [l.slug, l]));
+  const oldPractice = practiceItems(c);
   const seen = new Set();
   c.modules = (Array.isArray(modules) ? modules : []).map((m) => ({
     title: String(m?.title || '').trim().slice(0, 120) || 'Модуль',
@@ -76,6 +129,7 @@ function setModules(slug, modules) {
       return { ...o, slug, title_en: String(l.title_en || o.title_en || '').trim().slice(0, 140), title_ru: String(l.title_ru || o.title_ru || l.title_en || '').trim().slice(0, 140),
         goal: String(l.goal ?? o.goal ?? '').trim().slice(0, 400), minutes: o.minutes || 20 };
     }).filter((l) => l && l.title_en),
+    practice: normPractice(m?.practice, oldPractice),
   })).filter((m) => m.lessons.length);
   save(slug, c);
   return c;
@@ -100,10 +154,14 @@ function progress(c, at = Date.now()) {
   const weeksNeeded = Math.ceil(ls.length / perWeek);
   const week = c.approved ? Math.floor((at - Date.parse(c.approved)) / (7 * 864e5)) : 0;
   const examPassed = !!readAttempts(c.slug).find((a) => a.passed);
+  const practice = practiceItems(c).map((p) => ({ ...p, ...practiceStatus(c, p) }));
+  const pDone = practice.filter((p) => p.done).length;
   return {
+    practice, practiceDone: pDone, practiceTotal: practice.length,
     lessons: ls, passed, total: ls.length, expired: ls.filter((l) => l.expired).length, perWeek, weeksNeeded, week: week + 1,
     thisWeek: ls.slice(week * perWeek, (week + 1) * perWeek).map((l) => l.slug), behind: Math.max(0, Math.min(ls.length, (week + 1) * perWeek) - passed),
-    minutesLeft: ls.filter((l) => !l.passed).length * LESSON_MIN, examPassed, done: ls.length > 0 && passed === ls.length && examPassed,
+    minutesLeft: ls.filter((l) => !l.passed).length * LESSON_MIN + (practice.length - pDone) * PRACTICE_MIN, examPassed,
+    done: ls.length > 0 && passed === ls.length && pDone === practice.length && examPassed,
   };
 }
 
@@ -113,7 +171,7 @@ function list() {
     const c = get(s);
     const p = progress(c);
     return { slug: s, title: c.title, kind: c.kind, goal: c.goal, level: c.level, status: c.status, hours_per_week: c.hours_per_week,
-      passed: p.passed, total: p.total, examPassed: p.examPassed, done: p.done, created: c.created };
+      passed: p.passed, total: p.total, examPassed: p.examPassed, done: p.done, created: c.created, practiceDone: p.practiceDone, practiceTotal: p.practiceTotal };
   }).sort((a, b) => String(b.created).localeCompare(String(a.created)));
 }
 
@@ -245,4 +303,4 @@ function gradeReview(slug, answers) {
 
 module.exports = { DIR, KINDS, LEVELS, EXAM, LESSON_MIN, slugOk, cdir, get, save, lessons, create, normOutline, setModules, applyMatches, progress, list, coursesOf,
   addMaterial, addLink, removeMaterial, matDir, materialRefs, lessonContext, normExam, saveExam, publicExam, startExam, gradeExam, readAttempts, pastExamQuestions,
-  reviewFile, normReview, publicReview, gradeReview };
+  reviewFile, normReview, publicReview, gradeReview, PRESETS, normPractice, practiceItems, practiceStatus, practiceTry, practiceResult };

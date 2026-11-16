@@ -17,8 +17,10 @@ const LEVELS = {
   2: { title: 'Мощность и подглядывание', text: 'Мало трафика, маленький эффект, соблазн остановить раньше.' },
   3: { title: 'Ловушки данных', text: 'Перекос разделения, эффект новизны, сегменты, день недели.' },
   4: { title: 'Компромиссы бизнеса', text: 'Главная метрика растёт, а что-то важное проседает.' },
+  5: { title: 'Байес', text: 'Байесовский метод: prior, правило остановки по ожидаемым потерям, ROPE — смотреть можно каждый день.', bayes: true },
 };
-const TRAPS_BY_LEVEL = { 1: ['win', 'flat', 'lose'], 2: ['underpowered', 'peeking', 'win_small'], 3: ['srm', 'novelty', 'simpson', 'weekday'], 4: ['tradeoff_rev', 'tradeoff_guard', 'win_guarded'] };
+const TRAPS_BY_LEVEL = { 1: ['win', 'flat', 'lose'], 2: ['underpowered', 'peeking', 'win_small'], 3: ['srm', 'novelty', 'simpson', 'weekday'], 4: ['tradeoff_rev', 'tradeoff_guard', 'win_guarded'],
+  5: ['b_win', 'b_flat', 'b_small', 'b_peek', 'b_prior', 'b_revenue'] };
 const TRAP_TEXT = {
   win: 'нет ловушки: вариант B действительно лучше', flat: 'нет ловушки: эффекта нет', lose: 'нет ловушки: вариант B хуже',
   underpowered: 'мало данных: эффект есть, но маленький, а трафика не хватает', peeking: 'подглядывание: эффекта нет, ранние дни могут показать «значимость» случайно',
@@ -27,12 +29,20 @@ const TRAP_TEXT = {
   weekday: 'день недели: B лучше в будни и хуже в выходные, за полные недели — около нуля',
   tradeoff_rev: 'компромисс: конверсия растёт, средний чек и выручка на посетителя падают', tradeoff_guard: 'компромисс: главная метрика растёт, защитная проседает',
   win_guarded: 'нет ловушки: B лучше, защитные метрики в порядке',
+  b_win: 'байес: B действительно лучше — правило потерь срабатывает', b_flat: 'байес: эффекта нет — вывод «разницы нет» через ROPE',
+  b_small: 'байес: маленький настоящий эффект — правило потерь разрешает выкатить без «значимости»',
+  b_peek: 'байес: эффекта нет, а P(B лучше) в первые дни может перевалить за 95% — останавливаться надо по потерям или ROPE, не по вероятности',
+  b_prior: 'байес: «прошлые тесты» с другой базовой конверсией — сильный информативный prior тянет оценку и тормозит вывод; B на самом деле лучше',
+  b_revenue: 'байес: конверсия не меняется, растёт средний чек — главная метрика здесь выручка на посетителя',
 };
 // Что кандидат должен был заметить (флаги решения) и какие решения верны
 const FLAGS = { srm: 'перекос разделения (SRM)', novelty: 'эффект новизны', segments: 'сегменты ведут себя по-разному', weekday: 'влияние дня недели',
-  underpowered: 'мало данных / не хватает мощности', guardrail: 'защитная метрика просела', none: 'проблем в данных нет' };
-const TRAP_FLAG = { srm: 'srm', novelty: 'novelty', simpson: 'segments', weekday: 'weekday', underpowered: 'underpowered', tradeoff_rev: 'guardrail', tradeoff_guard: 'guardrail' };
-const DECISIONS = { ship: 'выкатить B', no_ship: 'не выкатывать', redo: 'доработать и перезапустить', inconclusive: 'данных недостаточно — продлить / перепроектировать' };
+  underpowered: 'мало данных / не хватает мощности', guardrail: 'защитная метрика просела', prior: 'prior перетягивает данные', none: 'проблем в данных нет' };
+const TRAP_FLAG = { srm: 'srm', novelty: 'novelty', simpson: 'segments', weekday: 'weekday', underpowered: 'underpowered', tradeoff_rev: 'guardrail', tradeoff_guard: 'guardrail', b_prior: 'prior' };
+const DECISIONS = { ship: 'выкатить B', no_ship: 'не выкатывать', redo: 'доработать и перезапустить', inconclusive: 'данных недостаточно — продлить / перепроектировать',
+  equivalent: 'разницы нет (ROPE) — оставить A' };
+const BAYES_DECISIONS = ['ship', 'no_ship', 'equivalent', 'inconclusive'];
+const PRIOR_WEIGHTS = [200, 1000, 5000];
 const INDUSTRIES = ['e-commerce', 'SaaS', 'мобильная игра', 'EdTech', 'финтех', 'маркетплейс', 'подписочный медиа-сервис', 'тревел', 'доставка еды', 'онлайн-брокер'];
 
 const SEGMENTS = [
@@ -137,26 +147,50 @@ function meanTest(a, b, alpha = 0.05) {
   const diff = mB - mA, z = se > 0 ? diff / se : 0, zc = ninv(1 - alpha / 2);
   return { a: mA, b: mB, diff, rel: mA > 0 ? diff / mA : null, lo: diff - zc * se, hi: diff + zc * se, p: se > 0 ? 2 * (1 - ncdf(Math.abs(z))) : 1, z, sdA: Math.sqrt(Math.max(0, vA)), sdB: Math.sqrt(Math.max(0, vB)) };
 }
-// Байес: доли — Beta(1+x, 1+n−x); средние — нормальная апостериорная. P(B лучше) с учётом направления метрики, ожидаемые потери в отн. единицах
-function bayes(kind, A, B, better = 'up', draws = 20000, seed = 7) {
+// Байес: доли — Beta(a0+x, b0+n−x) (prior по умолчанию Beta(1, 1)); средние — нормальная апостериорная.
+// P(B лучше) с учётом направления метрики, ожидаемые потери в отн. единицах; opt.rope / opt.ci — доля в ROPE, интервал и гистограмма отн. разницы
+function bayes(kind, A, B, better = 'up', draws = 20000, seed = 7, opt = {}) {
   const R = rng(seed);
   let win = 0, lossB = 0, lossA = 0;
   const sign = better === 'down' ? -1 : 1;
-  const base = kind === 'prop' ? (A.x + 1) / (A.n + 2) : (A.n ? A.sum / A.n : 0);
+  const pr = opt.prior || { a: 1, b: 1 };
+  const base = kind === 'prop' ? (A.x + pr.a) / (A.n + pr.a + pr.b) : (A.n ? A.sum / A.n : 0);
+  const rels = opt.ci || opt.rope ? new Float64Array(draws) : null;
   let mA, sA, mB, sB;
   if (kind === 'mean') {
     const m = (s) => (s.n ? s.sum / s.n : 0), v = (s) => (s.n > 1 ? (s.sum2 - s.n * m(s) ** 2) / (s.n - 1) : 0);
     mA = m(A); sA = Math.sqrt(v(A) / Math.max(1, A.n)); mB = m(B); sB = Math.sqrt(v(B) / Math.max(1, B.n));
   }
   for (let i = 0; i < draws; i++) {
-    const a = kind === 'prop' ? R.beta(1 + A.x, 1 + A.n - A.x) : mA + sA * R.normal();
-    const b = kind === 'prop' ? R.beta(1 + B.x, 1 + B.n - B.x) : mB + sB * R.normal();
+    const a = kind === 'prop' ? R.beta(pr.a + A.x, pr.b + A.n - A.x) : mA + sA * R.normal();
+    const b = kind === 'prop' ? R.beta(pr.a + B.x, pr.b + B.n - B.x) : mB + sB * R.normal();
     const d = sign * (b - a);
     if (d > 0) win++;
     lossB += Math.max(0, -d); lossA += Math.max(0, d);
+    if (rels) rels[i] = a > 0 ? b / a - 1 : 0;
   }
   const rel = (x) => (base > 0 ? x / draws / base : null);
-  return { pBetter: win / draws, lossB: rel(lossB), lossA: rel(lossA) };
+  const out = { pBetter: win / draws, lossB: rel(lossB), lossA: rel(lossA) };
+  if (rels) {
+    const sorted = Array.from(rels).sort((x, y) => x - y);
+    const q = (p) => sorted[Math.min(draws - 1, Math.floor(p * draws))];
+    out.ci = [q(0.025), q(0.975)];
+    out.mean = sorted.reduce((s2, x) => s2 + x, 0) / draws;
+    if (opt.rope) out.inRope = sorted.filter((x) => Math.abs(x) <= opt.rope).length / draws;
+    // Гистограмма отн. разницы для графика плотности: 40 корзин между 0,5% и 99,5% квантилями
+    const lo = q(0.005), hi = q(0.995), w = (hi - lo) / 40 || 1e-6, bins = new Array(40).fill(0);
+    for (const x of sorted) if (x >= lo && x <= hi) bins[Math.min(39, Math.floor((x - lo) / w))]++;
+    out.hist = { lo, hi, bins: bins.map((c) => c / draws) };
+  }
+  return out;
+}
+// Ожидаемые потери при нормальном приближении отн. разницы D ~ N(mu, sd): E[max(0, −D)] — для подсказки «за сколько дней»
+const normLoss = (mu, sd) => (sd > 0 ? sd * Math.exp(-0.5 * (mu / sd) ** 2) / Math.sqrt(2 * Math.PI) - mu * (1 - ncdf(mu / sd)) : Math.max(0, -mu));
+// Prior для конверсии: неинформативный или по «прошлым тестам» (среднее = базовая конверсия истории, вес = число «прошлых пользователей»)
+function priorOf(sc, design) {
+  if (design.method !== 'bayes' || design.prior?.type !== 'history' || !sc.history) return { a: 1, b: 1 };
+  const w = design.prior.weight, m = sc.history.base;
+  return { a: m * w, b: (1 - m) * w };
 }
 // Перекос разделения: хи-квадрат с 1 степенью свободы против заявленной доли
 function srmTest(nA, nB, shareB) {
@@ -197,6 +231,10 @@ function chooseTruth(level, seed, force = null) {
   if (trap === 'simpson') t.simpson = { lift: -u(0.04, 0.07), desktopShareB: u(0.63, 0.68) };
   if (trap === 'tradeoff_rev') { t.lift = u(0.07, 0.12); t.aovLift = -u(0.13, 0.2); }
   if (trap === 'tradeoff_guard') t.lift = u(0.06, 0.1);
+  if (trap === 'b_win') t.lift = u(0.07, 0.14);
+  if (trap === 'b_small') t.lift = u(0.025, 0.04);
+  if (trap === 'b_prior') t.lift = u(0.05, 0.09);
+  if (trap === 'b_revenue') t.aovLift = u(0.07, 0.12);
   return t;
 }
 // Числа сценария в разумных границах; уровень 2 «мало данных» — сервер сам режет трафик
@@ -228,6 +266,14 @@ function normScenario(raw, truth, opts = {}) {
     sc.primary_ok = sc.primary_ok.filter((k) => k !== 'g1');
     if (!sc.primary_ok.length) sc.primary_ok = ['conv'];
     sc.guard_must = ['g1'];
+  }
+  if (truth.trap === 'b_revenue') { sc.primary_ok = ['rpv']; sc.guard_must = ['conv']; }
+  // «Прошлые тесты» для информативного prior: у b_prior базовая конверсия там заметно выше нынешней
+  if (truth.trap?.startsWith('b_')) {
+    const k = truth.trap === 'b_prior' ? 1.35 + rng(opts.seed || 1).u() * 0.2 : 0.97 + rng(opts.seed || 1).u() * 0.06;
+    sc.history = { base: Math.round(sc.base * k * 1e4) / 1e4, tests: 8 + Math.floor(rng((opts.seed || 1) + 7).u() * 10) };
+    // Сильный prior должен быть соизмерим с данными: трафик — 1–2 тыс. в день, иначе данные «перевешивают» его за полдня
+    if (truth.trap === 'b_prior') sc.traffic = Math.min(sc.traffic, 1000 + Math.round(rng((opts.seed || 1) + 3).u() * 1000));
   }
   // Мало данных: дневной трафик такой, что для MDE 5% нужно ≈ 8–10 недель
   if (truth.trap === 'underpowered') {
@@ -328,23 +374,27 @@ function segMatch(key, seg) {
   const s = SEGMENTS.find((x) => x.key === key);
   return s && (seg === s.device || seg === s.user || seg === key);
 }
-function metricResult(m, acc, alpha, withBayes = true) {
+function metricResult(m, acc, alpha, withBayes = true, bopt = null) {
   const A = acc.A, B = acc.B;
   let r, bz;
   if (m.type === 'mean') {
     const sa = { n: A.n, sum: A.rev, sum2: A.rev2 }, sb = { n: B.n, sum: B.rev, sum2: B.rev2 };
     r = meanTest(sa, sb, alpha);
-    if (withBayes) bz = bayes('mean', sa, sb, m.better);
+    if (withBayes) bz = bayes('mean', sa, sb, m.better, bopt?.draws || 20000, 7, bopt ? { ...bopt, prior: null } : {});
   } else {
     const xa = m.key === 'conv' ? A.conv : A.extra[m.key] || 0, xb = m.key === 'conv' ? B.conv : B.extra[m.key] || 0;
     r = propTest(A.n, xa, B.n, xb, alpha);
     r.xA = xa; r.xB = xb;
-    if (withBayes) bz = bayes('prop', { n: A.n, x: xa }, { n: B.n, x: xb }, m.better);
+    if (withBayes) bz = bayes('prop', { n: A.n, x: xa }, { n: B.n, x: xb }, m.better, bopt?.draws || 20000, 7, bopt || {});
   }
   const out = { key: m.key, name: m.name, type: m.type, better: m.better };
   for (const k of ['a', 'b', 'diff', 'rel', 'lo', 'hi', 'p', 'xA', 'xB']) if (r[k] !== undefined) out[k] = r4(r[k]) ?? r[k];
   out.sig = r.p < alpha;
-  if (bz) out.bayes = { pBetter: r4(bz.pBetter), lossB: r4(bz.lossB), lossA: r4(bz.lossA) };
+  if (bz) {
+    out.bayes = { pBetter: r4(bz.pBetter), lossB: r4(bz.lossB), lossA: r4(bz.lossA) };
+    if (bz.ci) Object.assign(out.bayes, { ci: bz.ci.map(r4), mean: r4(bz.mean), inRope: bz.inRope != null ? r4(bz.inRope) : null,
+      hist: { lo: r4(bz.hist.lo), hi: r4(bz.hist.hi), bins: bz.hist.bins.map(r4) } });
+  }
   return out;
 }
 function results(sim, day, seg = null) {
@@ -353,15 +403,18 @@ function results(sim, day, seg = null) {
   const upto = clamp(Math.round(day) || run.day, 1, run.until);
   const alpha = design.alpha;
   const acc = aggregate(run.days, upto, seg);
+  const isB = design.method === 'bayes';
+  const bopt = (m, draws) => (isB ? { prior: m.key === 'conv' ? priorOf(scenario, design) : { a: 1, b: 1 }, rope: design.rope, ci: true, draws } : null);
   const metrics = [design.primary, ...design.guards].map((k) => scenario.metrics.find((m) => m.key === k)).filter(Boolean)
-    .map((m) => metricResult(m, acc, alpha));
+    .map((m) => metricResult(m, acc, alpha, true, bopt(m, 20000)));
   const srm = srmTest(acc.A.n, acc.B.n, design.split);
   const prim = scenario.metrics.find((m) => m.key === design.primary);
   // Накопительная история главной метрики по дням (для графика) — без байеса, чтобы быстро
   const series = [];
   for (let d = 1; d <= upto; d++) {
-    const r = metricResult(prim, aggregate(run.days, d, seg), alpha, false);
-    series.push({ day: d, a: r.a, b: r.b, rel: r.rel, lo: r.lo, hi: r.hi, p: r.p });
+    const r = metricResult(prim, aggregate(run.days, d, seg), alpha, isB, isB ? { ...bopt(prim, 3000), ci: true } : null);
+    series.push({ day: d, a: r.a, b: r.b, rel: r.rel, lo: r.lo, hi: r.hi, p: r.p,
+      ...(isB ? { lossA: r.bayes.lossA, lossB: r.bayes.lossB, pBetter: r.bayes.pBetter, inRope: r.bayes.inRope } : {}) });
   }
   const daily = [];
   for (let d = 0; d < upto; d++) {
@@ -370,8 +423,18 @@ function results(sim, day, seg = null) {
     const r = metricResult(prim, aggregate([one], 1, null), alpha, false);
     daily.push({ day: d + 1, wd: d % 7, a: r.a, b: r.b, nA: aggregate([one], 1).A.n, nB: aggregate([one], 1).B.n });
   }
-  return { day: upto, planned: design.days, until: run.until, seg, n: { A: acc.A.n, B: acc.B.n }, srm: { p: r4(srm.p), shareB: r4(srm.shareB), expected: design.split, flag: srm.p < 0.001 },
-    metrics, series, daily };
+  const out = { day: upto, planned: design.days, until: run.until, seg, n: { A: acc.A.n, B: acc.B.n }, srm: { p: r4(srm.p), shareB: r4(srm.shareB), expected: design.split, flag: srm.p < 0.001 },
+    metrics, series, daily, method: design.method || 'classic' };
+  if (isB) out.rule = bayesRule(metrics[0].bayes, design);
+  return out;
+}
+// Правило остановки: какое решение уже разрешено на этот день
+function bayesRule(b, design) {
+  const ok = [];
+  if (b.lossB != null && b.lossB < design.threshold) ok.push('ship');
+  if (b.lossA != null && b.lossA < design.threshold) ok.push('no_ship');
+  if (b.inRope != null && b.inRope >= 0.95) ok.push('equivalent');
+  return { ok, threshold: design.threshold, rope: design.rope };
 }
 
 // ---------- дизайн ----------
@@ -384,9 +447,15 @@ function normDesign(b, sc) {
     mde: clamp(Number(b?.mde) || 0.05, 0.005, 1), alpha: [0.01, 0.05, 0.1].includes(Number(b?.alpha)) ? Number(b.alpha) : 0.05,
     power: [0.8, 0.9].includes(Number(b?.power)) ? Number(b.power) : 0.8, split: [0.5, 0.2, 0.1].includes(Number(b?.split)) ? Number(b.split) : 0.5,
     days: Math.round(clamp(Number(b?.days) || 14, 1, MAX_DAYS)),
+    method: b?.method === 'bayes' ? 'bayes' : 'classic',
+    ...(b?.method === 'bayes' ? {
+      prior: b?.prior?.type === 'history' && sc.history ? { type: 'history', weight: PRIOR_WEIGHTS.includes(Number(b.prior.weight)) ? Number(b.prior.weight) : 1000 } : { type: 'flat' },
+      threshold: clamp(Number(b?.threshold) || 0.002, 0.0005, 0.02), rope: clamp(Number(b?.rope) || 0.01, 0.002, 0.1),
+    } : {}),
   };
 }
 function calc(sc, design) {
+  if (design.method === 'bayes') return calcBayes(sc, design);
   const m = sc.metrics.find((x) => x.key === design.primary);
   const base = m.type === 'mean' ? sc.base : m.key === 'conv' ? sc.base : m.base;
   const perArm = sampleSize({ type: m.type, base, aov: sc.aov, mde: design.mde, alpha: design.alpha, power: design.power });
@@ -403,6 +472,30 @@ function calc(sc, design) {
   return { perArm, daysNeeded, weeksNeeded: Math.ceil(daysNeeded / 7), planned, dailyTraffic: Math.round(daily), warn };
 }
 
+// Байес: вместо выборки — за сколько дней правило обычно срабатывает (нормальное приближение отн. разницы, без агента и без прогонов)
+function calcBayes(sc, design) {
+  const m = sc.metrics.find((x) => x.key === design.primary);
+  const daily = sc.traffic * WEEKDAY_AVG;
+  const nA = (d) => daily * (1 - design.split) * d, nB = (d) => daily * design.split * d;
+  const p = m.key === 'conv' ? sc.base : m.base || sc.base;
+  const cv2 = m.type === 'mean' ? (Math.exp(AOV_SIGMA ** 2) / sc.base - 1) : (1 - p) / p; // квадрат коэф. вариации на одного пользователя
+  const sd = (d) => Math.sqrt(cv2 / nA(d) + cv2 / nB(d));
+  let shipDay = null, ropeDay = null;
+  for (let d = 1; d <= MAX_DAYS; d++) {
+    if (shipDay == null && normLoss(design.mde, sd(d)) < design.threshold) shipDay = d;
+    if (ropeDay == null && 1.96 * sd(d) < design.rope) ropeDay = d;
+  }
+  const warn = [];
+  if (!design.hypothesis) warn.push('нет гипотезы');
+  if (design.rope < design.threshold) warn.push('ROPE уже порога потерь — «разницы нет» почти недостижимо');
+  if (design.prior?.type === 'history' && design.prior.weight > nA(7)) warn.push(`prior весит ${design.prior.weight.toLocaleString('ru-RU')} «пользователей» — больше, чем вариант A наберёт за неделю: он будет тянуть оценку`);
+  if (shipDay == null) warn.push(`при эффекте ${Math.round(design.mde * 1000) / 10}% правило потерь не сработает и за ${MAX_DAYS} дней`);
+  if (shipDay != null && shipDay > design.days) warn.push(`правило потерь обычно срабатывает к ${shipDay}-му дню, а бюджет — ${design.days}`);
+  if (ropeDay == null || ropeDay > design.days) warn.push(`«разницы нет» по ROPE ±${Math.round(design.rope * 1000) / 10}% ${ropeDay == null ? `не будет достигнуто и за ${MAX_DAYS} дней` : `достижимо к ${ropeDay}-му дню, а бюджет — ${design.days}`}: расширь ROPE, если такой эффект тебе не важен`);
+  return { method: 'bayes', shipDay, ropeDay, dailyTraffic: Math.round(daily), planned: { A: Math.round(nA(design.days)), B: Math.round(nB(design.days)) }, warn,
+    priorUsers: design.prior?.type === 'history' ? design.prior.weight : 0, history: sc.history || null };
+}
+
 // ---------- оценка решения ----------
 function idealDecision(truth, eff, design, atDecision) {
   const t = truth.trap;
@@ -416,7 +509,49 @@ function idealDecision(truth, eff, design, atDecision) {
   }
   return { ideal: ['no_ship'], partial: ['inconclusive'] };
 }
+function idealBayes(truth, eff, design) {
+  const prim = eff[design.primary] ?? eff.conv;
+  // Выкатить вариант, который хуже не больше чем на порог заботы, — не ошибка (байесовская логика решения)
+  if (Math.abs(prim) <= design.rope) return { ideal: prim >= -design.threshold ? ['equivalent', 'no_ship', 'ship'] : ['equivalent', 'no_ship'], partial: ['inconclusive'] };
+  if (prim > 0) return { ideal: ['ship'], partial: ['inconclusive'] };
+  return { ideal: ['no_ship'], partial: ['inconclusive', 'equivalent'] };
+}
+function scoreBayes(sim, decision) {
+  const { scenario: sc, truth, design } = sim;
+  const eff = trueEffects(sc, truth);
+  const notes = [];
+  let dz = 0;
+  if (sc.primary_ok.includes(design.primary)) dz += 8; else notes.push(`главная метрика: лучше ${sc.primary_ok.map((k) => sc.metrics.find((m) => m.key === k)?.name).join(' или ')}`);
+  const needG = sc.guard_must.length ? sc.guard_must : sc.metrics.filter((m) => m.key !== design.primary).slice(0, 1).map((m) => m.key);
+  if (needG.every((k) => design.guards.includes(k))) dz += 7; else notes.push(`защитные метрики: не хватило «${needG.filter((k) => !design.guards.includes(k)).map((k) => sc.metrics.find((m) => m.key === k)?.name).join('», «')}»`);
+  const weekA = sc.traffic * WEEKDAY_AVG * (1 - design.split) * 7;
+  if (design.prior?.type !== 'history' || design.prior.weight <= weekA) dz += 5; else notes.push(`prior сильнее данных за первую неделю (${design.prior.weight.toLocaleString('ru-RU')} «пользователей»)`);
+  if (design.rope >= design.threshold && design.threshold <= 0.01) dz += 5; else notes.push('порог потерь и ROPE несогласованы: ROPE должен быть шире порога, порог — не больше 1%');
+  if (design.days >= 7) dz += 2; else notes.push('бюджет меньше недели');
+  if (design.hypothesis.length >= 30) dz += 3; else notes.push('гипотеза слишком короткая');
+  // Процесс: остановка по правилу — без штрафа за ежедневный просмотр
+  let pr = 0;
+  const allowed = decision.at.rule?.ok || [];
+  const byRule = allowed.includes(decision.decision) || (decision.decision === 'no_ship' && allowed.includes('equivalent'));
+  const atBudget = decision.day >= design.days;
+  if (byRule || (atBudget && decision.decision === 'inconclusive')) pr += 15;
+  else if (atBudget) { pr += 8; notes.push('бюджет дней исчерпан, а правило не сработало — честнее «данных недостаточно»'); }
+  else notes.push(`решение «${DECISIONS[decision.decision]}» на ${decision.day}-й день — правило остановки ещё не сработало`);
+  // Ловушка prior есть, только если выбран тяжёлый prior из истории (весит больше 3 дней данных варианта A)
+  const heavy = design.prior?.type === 'history' && design.prior.weight >= sc.traffic * WEEKDAY_AVG * (1 - design.split) * 3;
+  const want = truth.trap === 'b_prior' && !heavy ? 'none' : TRAP_FLAG[truth.trap] || 'none';
+  const flags = decision.flags || [];
+  let fl = flags.includes(want) ? 15 : 0;
+  if (!fl) notes.push(want === 'none' ? 'проблем в данных не было — ложная тревога' : `не замечено: ${FLAGS[want]}`);
+  pr += Math.max(0, fl - 3 * flags.filter((f) => f !== want && f !== 'none').length);
+  const id = idealBayes(truth, eff, design);
+  const dc = id.ideal.includes(decision.decision) ? 40 : id.partial.includes(decision.decision) ? 20 : 0;
+  if (dc < 40) notes.push(`решение: лучше «${DECISIONS[id.ideal[0]]}»`);
+  return { total: dz + pr + dc, design: dz, process: pr, decision: dc, correct: dc === 40, ideal: id.ideal, caught: flags.includes(want), want, notes, byRule,
+    effects: Object.fromEntries(Object.entries(eff).map(([k, v]) => [k, r4(v)])) };
+}
 function score(sim, decision) {
+  if (sim.design.method === 'bayes') return scoreBayes(sim, decision);
   const { scenario: sc, truth, design, log } = sim;
   const c = calc(sc, design);
   const eff = trueEffects(sc, truth);
@@ -455,7 +590,8 @@ function list() {
     if (!s) return null;
     const dec = readJ(path.join(DIR, id, 'decision.json'));
     return { id, title: s.scenario?.title || 'A/B-тест', level: s.level, source: s.source, industry: s.scenario?.industry || '', status: status(id, s), created: s.created,
-      score: dec?.score?.total ?? null, correct: dec?.score?.correct ?? null, trap: dec ? readJ(path.join(DIR, id, 'truth.json'))?.trap : null };
+      score: dec?.score?.total ?? null, correct: dec?.score?.correct ?? null, trap: dec ? readJ(path.join(DIR, id, 'truth.json'))?.trap : null,
+      method: s.design?.method || s.method || 'classic', course: s.course || null };
   }).filter(Boolean).sort((a, b) => String(b.created).localeCompare(String(a.created)));
 }
 function status(id, s = get(id)) {
@@ -472,14 +608,15 @@ function get(id) {
 }
 function save(id, s) { s.updated = now(); writeJ(path.join(sdir(id), 'sim.json'), s); return s; }
 const truthOf = (id) => readJ(path.join(sdir(id), 'truth.json'));
-function create({ level = 1, industry = '', source = 'app', own = null }) {
+function create({ level = 1, industry = '', source = 'app', own = null, trap = null, course = null, method = null }) {
   fs.mkdirSync(DIR, { recursive: true });
   const id = `${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 6)}`;
   const seed = crypto.randomInt(1, 2 ** 31 - 1);
   const lv = LEVELS[level] ? Number(level) : 1;
   const ind = INDUSTRIES.includes(industry) ? industry : industry === 'own' ? '' : INDUSTRIES[seed % INDUSTRIES.length];
-  const s = { id, level: source === 'own' ? null : lv, source, seed, industry: ind, own, scenario: null, design: null, run: null, log: { views: [], segments: 0, daily: 0 }, created: now() };
-  if (source !== 'own') writeJ(path.join(sdir(id), 'truth.json'), chooseTruth(lv, seed));
+  const s = { id, level: source === 'own' ? null : lv, source, seed, industry: ind, own, scenario: null, design: null, run: null, log: { views: [], segments: 0, daily: 0 }, created: now(),
+    method: method === 'bayes' || LEVELS[lv]?.bayes ? 'bayes' : method === 'classic' ? 'classic' : null, course };
+  if (source !== 'own') writeJ(path.join(sdir(id), 'truth.json'), chooseTruth(lv, seed, trap && [].concat(...Object.values(TRAPS_BY_LEVEL)).includes(trap) ? trap : null));
   save(id, s);
   return s;
 }
@@ -509,7 +646,7 @@ function setDesign(id, body) {
   const s = get(id);
   if (s.run) throw err(409, 'дизайн зафиксирован — тест уже запущен');
   if (!s.scenario?.ready) throw err(400, 'ситуация ещё не готова');
-  s.design = normDesign(body, s.scenario);
+  s.design = normDesign({ ...body, ...(s.method ? { method: s.method } : {}) }, s.scenario);
   save(id, s);
   return { design: s.design, calc: calc(s.scenario, s.design) };
 }
@@ -546,11 +683,16 @@ function decide(id, body) {
   if (!s.run) throw err(400, 'тест не запущен');
   if (fs.existsSync(path.join(sdir(id), 'decision.json'))) throw err(409, 'решение уже принято');
   if (!DECISIONS[body?.decision]) throw err(400, 'выбери решение');
+  if (body.decision === 'equivalent' && s.design.method !== 'bayes') throw err(400, '«разницы нет (ROPE)» — только в байесовском методе');
   const day = clamp(Math.round(Number(body.day) || s.run.day), 1, s.run.until);
   const at = results(s, day);
   const prim = s.scenario.metrics.find((m) => m.key === s.design.primary);
   at.need = calc(s.scenario, s.design).perArm;
-  const dec = { decision: body.decision, flags: (Array.isArray(body.flags) ? body.flags : []).filter((f) => FLAGS[f]), reason: String(body.reason || '').trim().slice(0, 4000), day, at: { day, n: at.n, need: at.need, srm: at.srm, metrics: at.metrics }, decided: now() };
+  const dec = { decision: body.decision, flags: (Array.isArray(body.flags) ? body.flags : []).filter((f) => FLAGS[f]), reason: String(body.reason || '').trim().slice(0, 4000), day, at: { day, n: at.n, need: at.need, srm: at.srm, metrics: at.metrics.map(({ bayes: b, ...m }) => ({ ...m, bayes: b ? { pBetter: b.pBetter, lossA: b.lossA, lossB: b.lossB, ci: b.ci, inRope: b.inRope } : undefined })), rule: at.rule || null, method: at.method }, decided: now() };
+  if (s.design.method === 'bayes' && s.design.prior?.type === 'history') {
+    const flat = results({ ...s, design: { ...s.design, prior: { type: 'flat' } } }, day).metrics[0].bayes;
+    dec.flatPrior = { pBetter: flat.pBetter, lossA: flat.lossA, lossB: flat.lossB, ci: flat.ci, inRope: flat.inRope };
+  }
   s.truth = truthOf(id);
   dec.score = score(s, dec);
   delete s.truth;
@@ -571,7 +713,7 @@ function publicView(id) {
   const out = { id, level: s.level, source: s.source, industry: s.industry, own: s.own ? { description: s.own.description, hypothesis: s.own.hypothesis, metric: s.own.metric, assets: s.own.assets || [] } : null,
     scenario: s.scenario && !fs.existsSync(path.join(sdir(id), 'decision.json')) ? (({ primary_ok, guard_must, ...rest }) => rest)(s.scenario) : s.scenario, questions: s.questions || [], design: s.design, calc: s.design && s.scenario ? calc(s.scenario, s.design) : null,
     run: s.run ? { started: s.run.started, day: s.run.day, until: s.run.until } : null, log: { peeks: s.log.views.length, segments: s.log.segments, extended: s.log.extended || 0 },
-    status: status(id, s), created: s.created, decision: dec, debrief: readJ(path.join(sdir(id), 'debrief.json')) };
+    status: status(id, s), created: s.created, decision: dec, debrief: readJ(path.join(sdir(id), 'debrief.json')), method: s.method || null, course: s.course || null };
   if (dec) { const t = truthOf(id); out.truth = { trap: t.trap, text: TRAP_TEXT[t.trap] || 'свой тест: эффект из диапазона модели', range: t.range || null, effects: dec.score.effects }; }
   return out;
 }
@@ -616,7 +758,7 @@ const assetPath = (id, file) => { if (!/^shot-\d\.(png|jpg|webp)$/.test(file)) t
 function remove(id) { fs.rmSync(sdir(id), { recursive: true, force: true }); }
 
 module.exports = {
-  DIR, LEVELS, TRAPS_BY_LEVEL, TRAP_TEXT, FLAGS, DECISIONS, INDUSTRIES, SEGMENTS, SEG_LABEL, MAX_DAYS, WEEKDAY,
+  DIR, LEVELS, TRAPS_BY_LEVEL, TRAP_TEXT, FLAGS, DECISIONS, BAYES_DECISIONS, PRIOR_WEIGHTS, INDUSTRIES, priorOf, normLoss, bayesRule, calcBayes, SEGMENTS, SEG_LABEL, MAX_DAYS, WEEKDAY,
   rng, ncdf, ninv, propTest, meanTest, bayes, srmTest, sampleSize, chooseTruth, normScenario, generate, trueEffects, results, normDesign, calc, score,
   list, get, save, create, setScenario, setOwn, setDesign, start, view, extend, decide, setDebrief, normDebrief, publicView, stats, truthOf, sdir,
   saveAsset, assetPath, remove, idOk,

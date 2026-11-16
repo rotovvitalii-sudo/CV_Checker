@@ -931,10 +931,15 @@ A: ${scenario.change_a}
 B: ${scenario.change_b}
 
 Дизайн кандидата: гипотеза «${design.hypothesis || '—'}»; главная метрика — ${m(design.primary)}; защитные — ${design.guards.map(m).join(', ') || 'нет'};
-MDE ${pct(design.mde)}, α ${design.alpha}, мощность ${design.power}, доля B ${design.split}, ${design.days} дн. (нужно по расчёту ≈ ${calc.daysNeeded} дн., ${calc.perArm} на вариант).
+${design.method === 'bayes'
+    ? `БАЙЕСОВСКИЙ метод: prior — ${design.prior?.type === 'history' ? `по прошлым тестам (базовая ${pct(scenario.history?.base)}, вес ${design.prior.weight} «пользователей»)` : 'неинформативный Beta(1, 1)'};
+порог заботы (ожидаемые потери) ${pct(design.threshold)}, ROPE ±${pct(design.rope)}, бюджет ${design.days} дн., ожидаемый эффект ${pct(design.mde)}; доля B ${design.split}.
+Правило: выкатить, когда потери B < порога; «разницы нет», когда ≥ 95% апостериорного внутри ROPE. Смотреть каждый день можно — подглядывание здесь не ошибка, ошибка — решение до срабатывания правила.`
+    : `MDE ${pct(design.mde)}, α ${design.alpha}, мощность ${design.power}, доля B ${design.split}, ${design.days} дн. (нужно по расчёту ≈ ${calc.daysNeeded} дн., ${calc.perArm} на вариант).`}
 
 Данные на день решения (${decision.day} из ${design.days}): A ${decision.at.n.A}, B ${decision.at.n.B}; SRM p = ${decision.at.srm.p}.
-${decision.at.metrics.map((x) => `- ${x.name}: A ${x.type === 'mean' ? x.a : pct(x.a)}, B ${x.type === 'mean' ? x.b : pct(x.b)}, отн. ${pct(x.rel)}, p = ${x.p}, P(B лучше) = ${x.bayes?.pBetter}`).join('\n')}
+${decision.at.metrics.map((x) => `- ${x.name}: A ${x.type === 'mean' ? x.a : pct(x.a)}, B ${x.type === 'mean' ? x.b : pct(x.b)}, отн. ${pct(x.rel)}, p = ${x.p}, P(B лучше) = ${x.bayes?.pBetter}${x.bayes?.ci ? `, 95% CrI отн. разницы ${pct(x.bayes.ci[0])} … ${pct(x.bayes.ci[1])}, потери A ${pct(x.bayes.lossA)} / B ${pct(x.bayes.lossB)}, в ROPE ${pct(x.bayes.inRope)}` : ''}`).join('\n')}
+${decision.at.rule ? `Правило на день решения разрешало: ${decision.at.rule.ok.map((k) => decisions[k]).join(', ') || 'ничего — правило не сработало'}.\n` : ''}${decision.flatPrior ? `С неинформативным prior было бы: P(B лучше) ${decision.flatPrior.pBetter}, потери B ${pct(decision.flatPrior.lossB)}, CrI ${pct(decision.flatPrior.ci?.[0])} … ${pct(decision.flatPrior.ci?.[1])}.\n` : ''}
 
 Решение кандидата: «${decisions[decision.decision]}». Заметил: ${decision.flags.map((f) => flags[f]).join(', ') || 'ничего не отметил'}.
 Обоснование кандидата:
@@ -946,7 +951,7 @@ ${decision.reason || '(пусто)'}
 Оценка приложения: ${score.total}/100 (дизайн ${score.design}/30, процесс ${score.process}/30, решение ${score.decision}/40). Замечания: ${score.notes.join('; ') || 'нет'}.
 
 Оцени ОБОСНОВАНИЕ (не только решение):
-- "grade": 1–4 (4 — решение и логика как у сильного Growth PM: метрики, интервалы, риски, следующий шаг; 1 — решение по одному p-value или без логики);
+- "grade": 1–4 (4 — решение и логика как у сильного Growth PM: метрики, интервалы, риски, следующий шаг; 1 — решение по одному p-value${design.method === 'bayes' ? ' или по одной «вероятности быть лучше» без потерь и ROPE' : ''} или без логики);
 - "verdict": одна-две фразы по-русски, по существу;
 - "missed": 1–4 пункта, что упущено в рассуждении (конкретно: какую цифру не посмотрел, какой риск не назвал);
 - "strong": 2–4 тезиса, на что опирался бы сильный кандидат (не переписывай его текст);
@@ -954,5 +959,49 @@ ${decision.reason || '(пусто)'}
 Верни JSON: {"grade": 3, "verdict": "…", "missed": ["…"], "strong": ["…"], "interview": "…"}`;
 }
 
-module.exports = { simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- C24: симулятор воронок ----------
+const SIM_FUNNEL_SYSTEM = 'Ты пишешь учебную ситуацию для тренажёра продуктовой аналитики: продукт и его события трекинга. Ты не знаешь и не придумываешь, где в данных провал. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+function simFunnelScenario({ industry }) {
+  return `Тренажёр «собери воронку из событий», отрасль: ${industry}.
+Придумай правдоподобный продукт (без реальных брендов) с мобильным приложением (iOS, Android) и веб-версией и его основной путь пользователя.
+Правила:
+- 4–6 шагов основной воронки по порядку, ключи событий — snake_case как в трекинге (Amplitude / Mixpanel), например signup_completed, kyc_submitted.
+- Если в пути есть оплата / депозит / покупка — укажи его номер в "money_step" (0 — первый шаг); нет — null.
+- 1–2 посторонних события (app_open, push_clicked и т.п.) в "extra_events".
+- Конверсии шагов (доля дошедших с прошлого шага) правдоподобны для отрасли.
+- Текст по-русски: команда видит, что общая конверсия последние недели просела, но не знает где. Не пиши, где и у кого провал.
+
+Верни JSON:
+{"title": "короткое название", "industry": "${industry}", "product": "1–2 фразы", "context": "3–4 фразы",
+ "events": [{"key": "snake_case", "name": "по-русски коротко", "desc": "когда отправляется"}],
+ "extra_events": [{"key": "…", "name": "…", "desc": "…"}], "step_conv": [<доли переходов, на 1 меньше шагов>], "money_step": <номер или null>,
+ "sources": ["organic", "…"], "countries": ["PL", "…"], "versions": ["<старая>", "<средняя>", "<новая>"], "daily_users": <200–900>}`;
+}
+const SIM_FUNNEL_DEBRIEF_SYSTEM = 'Ты — строгий наставник по продуктовой аналитике. Оцениваешь, как кандидат собрал воронку из событий и нашёл провал. Без похвалы и без переписывания его ответа. Отвечай только одним JSON-объектом без пояснений и без markdown.';
+function simFunnelDebrief({ scenario, truth, answer, queries, causes, flags }) {
+  const q = (x) => `шаги ${x.steps.join(' → ')}; окно ${x.window_h} ч; порядок ${x.order === 'strict' ? 'строгий' : 'любой'}; считать ${x.count === 'users' ? 'пользователей' : 'события'}${x.breakdown ? `; разбивка по ${x.breakdown}` : ''}${x.exclude ? `; без ${x.exclude.prop} = ${x.exclude.value}` : ''}; дни ${x.from_day + 1}–${x.to_day + 1}`;
+  return `Продукт: ${scenario.title}. ${scenario.product} ${scenario.context}
+Шаги: ${scenario.steps.map((s) => s.key).join(' → ')}.
+
+Как кандидат собирал воронку (последние запросы):
+${queries.slice(-8).map((x) => `- ${q(x)}`).join('\n') || '- запросов нет'}
+
+Ответ кандидата: провал на шаге «${answer.step}», сегмент ${answer.segment?.prop} = ${answer.segment?.value}, с ${answer.from_day}-го дня, причина — ${causes[answer.cause]};
+искажения: ${answer.flags.map((f) => flags[f]).join(', ') || 'не отметил'}.
+Рассуждение: """${answer.text || '(пусто)'}"""
+Что проверил бы A/B-тестом: """${answer.abtest || '(пусто)'}"""
+
+Правда (кандидат её не видел): ${truth.text.main}. Искажение: ${truth.text.distract}.
+Оценка приложения: ${answer.score.total}/100 (находки ${answer.score.findings}/60, сборка ${answer.score.build}/25, искажения ${answer.score.distort}/15). Замечания: ${answer.score.notes.join('; ') || 'нет'}.
+
+Оцени ход анализа:
+- "grade": 1–4 (4 — как сильный продуктовый аналитик: правильная сборка, разбивка, дата, отличил поведение от трекинга и искажений, проверяемая гипотеза; 1 — угадал без анализа);
+- "verdict": 1–2 фразы по-русски;
+- "missed": 1–4 пункта, что упущено (конкретно: какую разбивку, окно, проверку не сделал);
+- "strong": 2–4 тезиса, как действовал бы сильный аналитик;
+- "interview": 2–3 фразы на английском — как рассказать этот разбор на интервью.
+Верни JSON: {"grade": 3, "verdict": "…", "missed": ["…"], "strong": ["…"], "interview": "…"}`;
+}
+
+module.exports = { simFunnelScenario, SIM_FUNNEL_SYSTEM, simFunnelDebrief, SIM_FUNNEL_DEBRIEF_SYSTEM, simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

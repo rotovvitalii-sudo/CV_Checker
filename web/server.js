@@ -32,6 +32,7 @@ const tests = require('./test-tasks');
 const cvv = require('./cv-versions');
 const courses = require('./courses');
 const simAb = require('./sim-ab');
+const simFunnel = require('./sim-funnel');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -3317,7 +3318,8 @@ function courseView(slug) {
   const c = courses.get(slug);
   const p = courses.progress(c);
   return { course: c, progress: p, exam: courses.publicExam(slug), examAttempts: courses.readAttempts(slug).map(({ questions, ...r }) => r),
-    jobs: Object.fromEntries(COURSE_KINDS.map((k) => [k, courseJob(slug, k)]).filter(([, j]) => j)), kinds: courses.KINDS, levels: courses.LEVELS };
+    jobs: Object.fromEntries(COURSE_KINDS.map((k) => [k, courseJob(slug, k)]).filter(([, j]) => j)), kinds: courses.KINDS, levels: courses.LEVELS,
+    presets: Object.fromEntries(Object.entries(courses.PRESETS).map(([k, v]) => [k, { sim: v.sim, title: v.title }])) };
 }
 app.get('/api/learn/courses/:slug', wrap(async (req, res) => {
   try { res.json(courseView(req.params.slug)); } catch (e) { cErr(res, e); }
@@ -3494,6 +3496,7 @@ function runSimDebrief(id) {
 app.get('/api/sim/ab', wrap(async (req, res) => {
   const l = abLesson();
   res.json({ list: simAb.list(), stats: simAb.stats(), levels: simAb.LEVELS, industries: simAb.INDUSTRIES, flags: simAb.FLAGS, decisions: simAb.DECISIONS,
+    bayesDecisions: simAb.BAYES_DECISIONS, priorWeights: simAb.PRIOR_WEIGHTS, funnels: simFunnel.list(),
     lesson: l ? { slug: l.slug, title: l.title_en } : null });
 }));
 app.post('/api/sim/ab', agentReady, wrap(async (req, res) => {
@@ -3561,6 +3564,7 @@ app.post('/api/sim/ab/:id/decide', wrap(async (req, res) => {
     const dec = simAb.decide(id, req.body || {});
     try { if ((await ensureReady()).ok) runSimDebrief(id); } catch { /* разбор агентом — по кнопке */ }
     events.add({ type: 'sim', title: `A/B-тест: ${dec.score.total}/100${dec.score.correct ? ' · решение верное' : ''}`, text: simAb.get(id).scenario.title, link: `#/learn/sim/${id}` });
+    practiceDone(simAb.get(id).course, id, dec.score.correct);
     res.json(simView(id));
   } catch (e) { cErr(res, e); }
 }));
@@ -3573,6 +3577,116 @@ app.post('/api/sim/ab/:id/debrief', agentReady, wrap(async (req, res) => {
   } catch (e) { cErr(res, e); }
 }));
 app.delete('/api/sim/ab/:id', wrap(async (req, res) => { try { simAb.get(req.params.id); simAb.remove(req.params.id); res.json({ ok: true }); } catch (e) { cErr(res, e); } }));
+
+// ---------- C24: симулятор воронок и практика в курсах ----------
+// Задание курса засчитано — первое верное решение; уведомление и ссылка на курс
+function practiceDone(link, simId, correct) {
+  if (!link?.slug || !link?.pid) return;
+  try {
+    if (courses.practiceResult(link.slug, link.pid, simId, correct)) {
+      const c = courses.get(link.slug);
+      const p = courses.practiceItems(c).find((x) => x.id === link.pid);
+      events.add({ type: 'course', title: 'Задание курса засчитано', text: `${c.title} · ${p?.title || ''}`, link: `#/learn/c/${link.slug}` });
+    }
+  } catch (e) { console.error('practice:', e.message); }
+}
+const funnelJobs = new Map();
+const funnelJob = (id, kind) => { const j = jobs.get(funnelJobs.get(id)?.[kind]); return j ? publicJob(j) : null; };
+const setFunnelJob = (id, kind, job) => funnelJobs.set(id, { ...(funnelJobs.get(id) || {}), [kind]: job.id });
+const funnelBusy = (id, kind) => ['running', 'queued'].includes(funnelJob(id, kind)?.state);
+function funnelView(id) {
+  const v = simFunnel.publicView(id);
+  v.jobs = Object.fromEntries(['scenario', 'debrief'].map((k) => [k, funnelJob(id, k)]).filter(([, j]) => j));
+  return v;
+}
+function runFunnelScenario(id) {
+  const s = simFunnel.get(id);
+  const job = runJob({ kind: 'simfunnel', target: `simf:${id}`, system: prompts.SIM_FUNNEL_SYSTEM,
+    prompt: prompts.simFunnelScenario({ industry: s.industry || simAb.INDUSTRIES[s.seed % simAb.INDUSTRIES.length] }),
+    logFile: path.join(simFunnel.sdir(id), 'scenario.log'), onDone: async (j) => { simFunnel.setScenario(id, oneJSON(j.finalText)); } });
+  job.label = 'симулятор воронок';
+  setFunnelJob(id, 'scenario', job);
+  return job;
+}
+function runFunnelDebrief(id) {
+  const s = simFunnel.get(id);
+  const v = simFunnel.publicView(id);
+  const job = runJob({ kind: 'simfunneldebrief', target: `simf:${id}`, system: prompts.SIM_FUNNEL_DEBRIEF_SYSTEM,
+    prompt: prompts.simFunnelDebrief({ scenario: s.scenario, truth: v.truth, answer: v.answer, queries: s.queries || [], causes: simFunnel.CAUSES, flags: simFunnel.FLAGS }),
+    logFile: path.join(simFunnel.sdir(id), 'debrief.log'), onDone: async (j) => { simFunnel.setDebrief(id, simAb.normDebrief(oneJSON(j.finalText))); } });
+  job.label = 'разбор воронки';
+  setFunnelJob(id, 'debrief', job);
+  return job;
+}
+app.get('/api/sim/funnel', wrap(async (req, res) => res.json({ list: simFunnel.list(), industries: simAb.INDUSTRIES, causes: simFunnel.CAUSES, flags: simFunnel.FLAGS })));
+app.post('/api/sim/funnel', agentReady, wrap(async (req, res) => {
+  try { const s = simFunnel.create({ industry: String(req.body?.industry || '') }); runFunnelScenario(s.id); res.json({ id: s.id }); } catch (e) { cErr(res, e); }
+}));
+app.get('/api/sim/funnel/:id', wrap(async (req, res) => { try { res.json(funnelView(req.params.id)); } catch (e) { cErr(res, e); } }));
+app.post('/api/sim/funnel/:id/scenario', agentReady, wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (simFunnel.get(id).scenario?.ready) return res.status(409).json({ error: 'ситуация уже есть' });
+    if (funnelBusy(id, 'scenario')) return res.status(409).json({ error: 'ситуация уже пишется' });
+    res.json({ jobId: runFunnelScenario(id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.get('/api/sim/funnel/:id/explore', wrap(async (req, res) => { try { res.json(simFunnel.explore(req.params.id)); } catch (e) { cErr(res, e); } }));
+app.post('/api/sim/funnel/:id/query', wrap(async (req, res) => { try { res.json(simFunnel.funnel(req.params.id, req.body || {})); } catch (e) { cErr(res, e); } }));
+// «Как надо было» — только после ответа
+app.get('/api/sim/funnel/:id/ideal', wrap(async (req, res) => {
+  try {
+    const v = simFunnel.publicView(req.params.id);
+    if (!v.answer) return res.status(400).json({ error: 'сначала ответ' });
+    const s = simFunnel.get(req.params.id);
+    const keep = s.queries;
+    const r = simFunnel.funnel(req.params.id, v.truth.ideal);
+    s.queries = keep; simFunnel.save(req.params.id, s);
+    res.json(r);
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/funnel/:id/answer', wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    const a = simFunnel.answer(id, req.body || {});
+    try { if ((await ensureReady()).ok) runFunnelDebrief(id); } catch { /* разбор — по кнопке */ }
+    events.add({ type: 'sim', title: `Воронка: ${a.score.total}/100${a.score.correct ? ' · провал найден' : ''}`, text: simFunnel.get(id).scenario.title, link: `#/learn/sim/f/${id}` });
+    practiceDone(simFunnel.get(id).course, id, a.score.correct);
+    res.json(funnelView(id));
+  } catch (e) { cErr(res, e); }
+}));
+app.post('/api/sim/funnel/:id/debrief', agentReady, wrap(async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!simFunnel.publicView(id).answer) return res.status(400).json({ error: 'сначала ответ' });
+    if (funnelBusy(id, 'debrief')) return res.status(409).json({ error: 'разбор уже идёт' });
+    res.json({ jobId: runFunnelDebrief(id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.delete('/api/sim/funnel/:id', wrap(async (req, res) => { try { simFunnel.get(req.params.id); simFunnel.remove(req.params.id); res.json({ ok: true }); } catch (e) { cErr(res, e); } }));
+
+// Задание курса: новая ситуация по заготовке, связь с курсом; засчитывается первое верное решение
+app.post('/api/learn/courses/:slug/practice/:pid/start', agentReady, wrap(async (req, res) => {
+  try {
+    const { slug, pid } = req.params;
+    const c = courses.get(slug);
+    const p = courses.practiceItems(c).find((x) => x.id === pid);
+    if (!p) return res.status(404).json({ error: 'нет такого задания' });
+    const pr = courses.PRESETS[p.preset];
+    const link = { slug, pid };
+    let id;
+    if (pr.sim === 'funnel') {
+      id = simFunnel.create({ course: link, preset: { main: pr.main, distract: pr.distract } }).id;
+      runFunnelScenario(id);
+    } else {
+      const trap = pr.trap || (pr.traps ? pr.traps[crypto.randomInt(pr.traps.length)] : null);
+      id = simAb.create({ level: pr.level, trap, course: link, method: pr.level === 5 ? 'bayes' : null }).id;
+      runSimScenario(id);
+    }
+    courses.practiceTry(slug, pid, id);
+    res.json({ sim: pr.sim, id });
+  } catch (e) { cErr(res, e); }
+}));
 
 // Повторение сданной темы: выжимка и 5 вопросов, один раз на урок (Haiku); на «сдано» не влияет
 app.post('/api/topics/:slug/review', agentReady, wrap(async (req, res) => {

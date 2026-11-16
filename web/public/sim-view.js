@@ -19,6 +19,7 @@ async function loadSim(sub) {
   const rest = sub.replace(/^sim\/?/, '');
   if (!simMeta) { try { simMeta = await api('/api/sim/ab'); } catch (e) { root.innerHTML = `<div class="page-wrap"><p class="error">${esc(e.message)}</p></div>`; return; } }
   if (rest === 'own') return renderSimOwn();
+  if (rest.startsWith('f/')) return renderFunnel(rest.slice(2));
   if (rest) return renderSim(rest);
   return renderSimHome();
 }
@@ -48,13 +49,15 @@ async function renderSimHome() {
         <div class="sim-levels">${Object.entries(m.levels).map(([k, l]) => `<label class="sim-level"><input type="radio" name="level" value="${k}" ${Number(k) === st.next ? 'checked' : ''}>
           <span><strong>${k}. ${esc(l.title)}</strong>${Number(k) === st.next ? ' <span class="chip">рекомендую</span>' : ''}<span class="muted small">${esc(l.text)}</span></span></label>`).join('')}</div>
         <div class="row"><label class="row" style="gap:6px;margin:0">Продукт <select name="industry"><option value="">любой</option>${m.industries.map((i) => `<option>${esc(i)}</option>`).join('')}</select></label>
-          <button type="submit" class="primary">Получить ситуацию</button><span class="hint" style="margin:0">Haiku пишет историю ≈ $0.01, ~15 с; эффект и ловушку выбирает сервер.</span></div>
+          <button type="submit" class="primary">Получить ситуацию</button><span class="hint" style="margin:0">Haiku пишет историю ≈ $0.001, ~15 с; эффект и ловушку выбирает сервер. Уровень 5 — байесовский метод.</span></div>
         <p class="error" id="simNewErr"></p>
       </form>
       ${simStatsHtml(m)}
       ${simListHtml(m)}
+      ${funnelHomeHtml(m)}
     </section></div>`;
   bindTabs();
+  bindFunnelHome();
   $('#simNew').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('[type=submit]');
@@ -89,7 +92,7 @@ function simListHtml(m) {
   const stLabel = { draft: 'ситуация пишется', questions: 'нужны ответы', design: 'дизайн', running: 'идёт', done: 'разобран' };
   return `<div class="table-box"><table class="apps"><thead><tr><th>Тест</th><th>Уровень</th><th>Статус</th><th>Оценка</th></tr></thead><tbody>
     ${m.list.map((x) => `<tr class="clickable" data-sim="${esc(x.id)}"><td><a href="#/learn/sim/${esc(x.id)}">${esc(x.title)}</a><div class="muted small">${esc(x.industry || (x.source === 'own' ? 'свой тест' : ''))} · ${esc(String(x.created).slice(0, 10))}</div></td>
-      <td>${x.level ? `${x.level}` : '<span class="chip">свой</span>'}</td><td>${stLabel[x.status] || x.status}</td>
+      <td>${x.level ? `${x.level}${x.method === 'bayes' ? ' · байес' : ''}` : '<span class="chip">свой</span>'}${x.course ? ' <span class="chip">курс</span>' : ''}</td><td>${stLabel[x.status] || x.status}</td>
       <td>${x.score != null ? `<strong>${x.score}</strong>${x.correct ? ' <span class="pill good">верно</span>' : ''}` : '—'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -153,7 +156,8 @@ function simHtml(v) {
   const sc = v.scenario;
   const head = `<section class="home-head"><div><h1>${esc(sc?.title || (v.source === 'own' ? 'Свой тест' : 'A/B-тест'))}</h1>
       <p class="lead">${v.level ? `Уровень ${v.level} · ` : 'Свой тест · '}${esc(sc?.industry || v.industry || '')}</p></div>
-      <button type="button" class="link-btn" id="simDel">удалить</button></section>`;
+      <button type="button" class="link-btn" id="simDel">удалить</button></section>
+    ${v.course ? `<p class="small" style="margin:0 0 8px"><span class="chip">задание курса</span> засчитывается первое верное решение · <a href="#/learn/c/${enc(v.course.slug)}">← к курсу</a></p>` : ''}`;
   if (!sc?.ready) {
     const j = v.jobs.scenario || v.jobs.own;
     let body = simJobBox(j, v.source === 'own' ? 'Sonnet разбирает твой тест…' : 'Пишу ситуацию…');
@@ -196,32 +200,53 @@ function simScenarioHtml(v) {
 
 // ---------- дизайн ----------
 function simDesignHtml(v) {
-  const sc = v.scenario, d = v.design || { hypothesis: '', primary: 'conv', guards: [], mde: 0.05, alpha: 0.05, power: 0.8, split: 0.5, days: 14 };
+  const sc = v.scenario, d = v.design || { hypothesis: '', primary: 'conv', guards: [], mde: 0.05, alpha: 0.05, power: 0.8, split: 0.5, days: 14, method: v.method || 'classic', prior: { type: 'flat' }, threshold: 0.002, rope: 0.01 };
   const opt = (arr, cur) => arr.map(([val, l]) => `<option value="${val}" ${String(val) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
-  return `<form class="card stack" id="simDesign"><h2 style="margin:0">Дизайн теста</h2>
+  const meth = v.method || d.method || 'classic';
+  const bayesBox = `<div class="sim-bayes form-grid two" ${meth === 'bayes' ? '' : 'hidden'}>
+      <label>Prior для конверсии<select name="priorType">${opt([['flat', 'неинформативный Beta(1, 1)'], ...(sc.history ? [['history', `по прошлым тестам (${sc.history.tests} тестов, базовая ${pctS(sc.history.base)})`]] : [])], d.prior?.type || 'flat')}</select></label>
+      <label>Вес prior («прошлых пользователей»)<select name="priorWeight">${opt((simMeta.priorWeights || [200, 1000, 5000]).map((w) => [w, num(w)]), d.prior?.weight || 1000)}</select></label>
+      <label>Порог заботы — ожидаемые потери, % отн.<input type="number" name="threshold" min="0.05" max="2" step="0.05" value="${Math.round((d.threshold || 0.002) * 10000) / 100}"></label>
+      <label>ROPE ±, % отн. (что считаем «разницы нет»)<input type="number" name="rope" min="0.2" max="10" step="0.1" value="${Math.round((d.rope || 0.01) * 1000) / 10}"></label></div>`;
+  return `<form class="card stack ${meth === 'bayes' ? 'is-bayes' : ''}" id="simDesign"><h2 style="margin:0">Дизайн теста</h2>
+    ${v.method ? `<p class="small" style="margin:0">Метод: <strong>${meth === 'bayes' ? 'байесовский' : 'классический'}</strong> (задан ситуацией)</p><input type="hidden" name="method" value="${meth}">`
+    : `<div class="row small" style="gap:14px">Метод: <label class="sim-opt"><input type="radio" name="method" value="classic" ${meth !== 'bayes' ? 'checked' : ''}> классический</label>
+      <label class="sim-opt"><input type="radio" name="method" value="bayes" ${meth === 'bayes' ? 'checked' : ''}> байесовский</label></div>`}
     <label>Гипотеза<textarea name="hypothesis" rows="3" placeholder="Если …, то … вырастет на …, потому что …">${esc(d.hypothesis)}</textarea></label>
     <div class="form-grid two">
       <label>Главная метрика<select name="primary">${opt(sc.metrics.map((m) => [m.key, m.name]), d.primary)}</select></label>
       <div><span class="small">Защитные метрики</span><div class="row" style="flex-wrap:wrap;gap:4px 14px">${sc.metrics.map((m) => `<label class="sim-opt"><input type="checkbox" name="guards" value="${m.key}" ${d.guards.includes(m.key) ? 'checked' : ''}> ${esc(m.name)}</label>`).join('')}</div></div>
-      <label>Минимальный эффект (MDE), % отн.<input type="number" name="mde" min="0.5" max="100" step="0.5" value="${Math.round(d.mde * 1000) / 10}"></label>
-      <label>Длительность, дней<input type="number" name="days" min="1" max="56" value="${d.days}"></label>
-      <label>α (уровень значимости)<select name="alpha">${opt([[0.01, '0.01'], [0.05, '0.05'], [0.1, '0.10']], d.alpha)}</select></label>
-      <label>Мощность<select name="power">${opt([[0.8, '80%'], [0.9, '90%']], d.power)}</select></label>
+      <label><span class="cls-only">Минимальный эффект (MDE)</span><span class="bay-only">Ожидаемый эффект</span>, % отн.<input type="number" name="mde" min="0.5" max="100" step="0.5" value="${Math.round(d.mde * 1000) / 10}"></label>
+      <label><span class="cls-only">Длительность</span><span class="bay-only">Бюджет (максимум)</span>, дней<input type="number" name="days" min="1" max="56" value="${d.days}"></label>
+      <label class="cls-only">α (уровень значимости)<select name="alpha">${opt([[0.01, '0.01'], [0.05, '0.05'], [0.1, '0.10']], d.alpha)}</select></label>
+      <label class="cls-only">Мощность<select name="power">${opt([[0.8, '80%'], [0.9, '90%']], d.power)}</select></label>
       <label>Разделение A / B<select name="split">${opt([[0.5, '50 / 50'], [0.2, '80 / 20'], [0.1, '90 / 10']], d.split)}</select></label>
     </div>
+    ${bayesBox}
     <div id="simCalc" class="sim-calc"></div>
-    <div class="row"><button type="submit" class="primary">Запустить тест</button><span class="hint" style="margin:0">Дизайн фиксируется. Дни генерируются сразу — листаешь мгновенно; просмотр до конца плана считается подглядыванием.</span></div>
+    <div class="row"><button type="submit" class="primary">Запустить тест</button><span class="hint" style="margin:0"><span class="cls-only">Дизайн фиксируется. Дни генерируются сразу — листаешь мгновенно; просмотр до конца плана считается подглядыванием.</span><span class="bay-only">Дизайн фиксируется. Смотреть можно каждый день — штраф только за решение до срабатывания твоего правила.</span></span></div>
     <p class="error" id="simDesignErr"></p></form>`;
 }
 function readDesign(f) {
-  return { hypothesis: f.hypothesis.value, primary: f.primary.value, guards: [...f.querySelectorAll('[name=guards]:checked')].map((x) => x.value).filter((k) => k !== f.primary.value),
+  const method = f.querySelector('[name=method]:checked')?.value || f.querySelector('[name=method]')?.value || 'classic';
+  return { method, prior: { type: f.priorType?.value || 'flat', weight: Number(f.priorWeight?.value || 1000) },
+    threshold: Number(f.threshold?.value || 0.2) / 100, rope: Number(f.rope?.value || 1) / 100, hypothesis: f.hypothesis.value, primary: f.primary.value, guards: [...f.querySelectorAll('[name=guards]:checked')].map((x) => x.value).filter((k) => k !== f.primary.value),
     mde: Number(f.mde.value) / 100, days: Number(f.days.value), alpha: Number(f.alpha.value), power: Number(f.power.value), split: Number(f.split.value) };
 }
 async function simCalc(v) {
   const f = $('#simDesign');
   if (!f) return;
   try {
-    const { calc } = await api(`/api/sim/ab/${enc(v.id)}/calc`, { method: 'POST', body: readDesign(f) });
+    const dd = readDesign(f);
+    f.classList.toggle('is-bayes', dd.method === 'bayes');
+    f.querySelector('.sim-bayes').hidden = dd.method !== 'bayes';
+    const { calc } = await api(`/api/sim/ab/${enc(v.id)}/calc`, { method: 'POST', body: dd });
+    if (calc.method === 'bayes') {
+      $('#simCalc').innerHTML = `<p class="small" style="margin:0">При эффекте ${signPct(dd.mde)} правило потерь обычно срабатывает к <strong>${calc.shipDay ? `${calc.shipDay}-му дню` : 'концу — не сработает'}</strong>;
+        «разницы нет» по ROPE — к <strong>${calc.ropeDay ? `${calc.ropeDay}-му дню` : 'не достижимо'}</strong> (если эффекта нет). Трафик ${num(calc.dailyTraffic)} в день.${calc.priorUsers ? ` Prior = ${num(calc.priorUsers)} «пользователей».` : ''}</p>
+        ${calc.warn.map((w) => `<p class="warn-text small" style="margin:0">${esc(w)}</p>`).join('')}`;
+      return;
+    }
     $('#simCalc').innerHTML = `<p class="small" style="margin:0">Нужно <strong>${num(calc.perArm)}</strong> на вариант → ≈ <strong>${calc.daysNeeded} дн.</strong> (${calc.weeksNeeded} нед.) при ${num(calc.dailyTraffic)} в день.
       По плану: A ${num(calc.planned.A)}, B ${num(calc.planned.B)}.</p>
       ${calc.warn.map((w) => `<p class="warn-text small" style="margin:0">${esc(w)}</p>`).join('')}`;
@@ -233,8 +258,8 @@ function simRunHtml(v) {
   const d = v.design, sc = v.scenario;
   const m = (k) => sc.metrics.find((x) => x.key === k)?.name || k;
   return `<section class="card stack">
-    <details><summary class="small">Дизайн: ${esc(m(d.primary))} · MDE ${signPct(d.mde)} · α ${d.alpha} · ${Math.round(d.power * 100)}% · ${Math.round((1 - d.split) * 100)}/${Math.round(d.split * 100)} · ${d.days} дн.</summary>
-      <p class="small" style="margin:6px 0 0">${esc(d.hypothesis || '—')}</p><p class="muted small" style="margin:4px 0 0">Защитные: ${d.guards.map((k) => esc(m(k))).join(', ') || 'нет'} · нужно ≈ ${v.calc.daysNeeded} дн.</p></details>
+    <details><summary class="small">Дизайн: ${esc(m(d.primary))} · ${d.method === 'bayes' ? `байес · prior ${d.prior?.type === 'history' ? `из истории, вес ${num(d.prior.weight)}` : 'Beta(1, 1)'} · порог потерь ${pctS(d.threshold)} · ROPE ±${pctS(d.rope, 1)}` : `MDE ${signPct(d.mde)} · α ${d.alpha} · ${Math.round(d.power * 100)}%`} · ${Math.round((1 - d.split) * 100)}/${Math.round(d.split * 100)} · ${d.days} дн.</summary>
+      <p class="small" style="margin:6px 0 0">${esc(d.hypothesis || '—')}</p><p class="muted small" style="margin:4px 0 0">Защитные: ${d.guards.map((k) => esc(m(k))).join(', ') || 'нет'} · ${d.method === 'bayes' ? `правило потерь обычно к ${v.calc.shipDay || '—'}-му дню` : `нужно ≈ ${v.calc.daysNeeded} дн.`}</p></details>
     <div class="row sim-days">
       <button type="button" class="small" id="simPrev">←</button>
       <strong id="simDayLbl"></strong>
@@ -260,9 +285,9 @@ async function loadSimResults(v, day = simUI.day) {
     $('#simPrev').disabled = r.day <= 1;
     $('#simNext').disabled = r.day >= r.until;
     $('#simEnd').disabled = r.day >= r.until;
-    const peeks = v.decision ? '' : (r.day < r.planned ? 'смотришь до конца плана — это подглядывание' : '');
+    const peeks = v.decision ? '' : r.method === 'bayes' ? (r.rule.ok.length ? `правило сработало: ${r.rule.ok.map((k) => simMeta.decisions[k]).join(' / ')}` : 'правило пока не сработало — смотреть можно') : (r.day < r.planned ? 'смотришь до конца плана — это подглядывание' : '');
     $('#simPeeks').textContent = peeks;
-    box.innerHTML = simResultsHtml(v, r);
+    box.innerHTML = r.method === 'bayes' ? simBayesHtml(v, r) : simResultsHtml(v, r);
     const dd = $('#simDecDay');
     if (dd) dd.textContent = r.day;
   } catch (e) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
@@ -309,8 +334,8 @@ function simChart(r) {
 function simDecideHtml(v) {
   const m = simMeta;
   return `<form class="card stack" id="simDecide"><h2 style="margin:0">Решение</h2>
-    <div class="row" style="flex-wrap:wrap;gap:6px 16px">${Object.entries(m.decisions).map(([k, l]) => `<label class="sim-opt"><input type="radio" name="decision" value="${k}"> ${esc(l)}</label>`).join('')}</div>
-    <div><span class="small">Что заметил в данных</span><div class="row" style="flex-wrap:wrap;gap:4px 14px">${Object.entries(m.flags).map(([k, l]) => `<label class="sim-opt"><input type="checkbox" name="flags" value="${k}"> ${esc(l)}</label>`).join('')}</div></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px 16px">${Object.entries(m.decisions).filter(([k]) => (v.design.method === 'bayes' ? m.bayesDecisions.includes(k) : k !== 'equivalent')).map(([k, l]) => `<label class="sim-opt"><input type="radio" name="decision" value="${k}"> ${esc(l)}</label>`).join('')}</div>
+    <div><span class="small">Что заметил в данных</span><div class="row" style="flex-wrap:wrap;gap:4px 14px">${Object.entries(m.flags).filter(([k]) => k !== 'prior' || v.design.method === 'bayes').map(([k, l]) => `<label class="sim-opt"><input type="checkbox" name="flags" value="${k}"> ${esc(l)}</label>`).join('')}</div></div>
     <div><span class="small">Обоснование — как для CPO</span><div class="dict"><textarea name="reason" id="simReason" rows="5" placeholder="Что показали данные, насколько им верить, какой риск, что делаем дальше"></textarea>
       <button type="button" class="mic" id="simMic" title="Диктовка голосом" aria-label="Диктовка голосом">🎤</button></div><div class="hint" id="simMicHint"></div></div>
     <div class="row"><button type="submit" class="primary">Принять решение на день <span id="simDecDay">${simUI.day}</span></button>
@@ -330,6 +355,9 @@ function simDebriefHtml(v) {
     <div class="banner ${sc.correct ? 'good' : 'warn'}"><p style="margin:0"><strong>Что было на самом деле:</strong> ${esc(t.text)}.${t.range ? ` Модель брала эффект из диапазона ${signPct(t.range[0])} … ${signPct(t.range[1])}.` : ''}</p></div>
     <p class="small" style="margin:0">Ты решил: <strong>${esc(simMeta.decisions[dec.decision])}</strong> на день ${dec.day} из ${v.design.days}${dec.flags.length ? `; заметил: ${dec.flags.map((f) => esc(simMeta.flags[f])).join(', ')}` : ''}.
       Лучше: <strong>${sc.ideal.map((k) => esc(simMeta.decisions[k])).join(' или ')}</strong>.</p>
+    ${dec.flatPrior ? `<p class="small" style="margin:0">С неинформативным prior в тот же день: P(B лучше) ${pctS(dec.flatPrior.pBetter, 1)}, потери B ${pctS(dec.flatPrior.lossB)},
+      95% CrI ${signPct(dec.flatPrior.ci?.[0])} … ${signPct(dec.flatPrior.ci?.[1])} — сравни со своим.</p>` : ''}
+    ${v.design.method === 'bayes' ? `<p class="muted small" style="margin:0">${sc.byRule ? 'Остановка — по твоему правилу.' : 'Решение принято не по правилу остановки.'}</p>` : ''}
     <div class="table-box"><table class="apps small"><thead><tr><th>Метрика</th><th>Истинный эффект</th><th>Ты видел</th></tr></thead><tbody>
       ${Object.entries(t.effects).map(([k, x]) => `<tr><td>${esc(m(k))}</td><td><strong>${signPct(x, 1)}</strong></td><td class="muted">${obs[k] != null ? signPct(obs[k], 1) : 'не смотрел'}</td></tr>`).join('')}</tbody></table></div>
     <div class="sim-kpis"><div><span class="muted small">дизайн</span><strong>${sc.design}/30</strong></div><div><span class="muted small">процесс</span><strong>${sc.process}/30</strong></div><div><span class="muted small">решение</span><strong>${sc.decision}/40</strong></div></div>
@@ -406,7 +434,9 @@ function bindSim(v) {
       if (!decision) { $('#simDecErr').textContent = 'выбери решение'; return; }
       const flags = [...df.querySelectorAll('[name=flags]:checked')].map((x) => x.value);
       const reason = df.reason.value.trim();
-      if (simUI.day < v.design.days && !confirm(`Решение на день ${simUI.day} из ${v.design.days} — это ранняя остановка. Принять?`)) return;
+      if (v.design.method !== 'bayes' && simUI.day < v.design.days && !confirm(`Решение на день ${simUI.day} из ${v.design.days} — это ранняя остановка. Принять?`)) return;
+      if (v.design.method === 'bayes' && simUI.res && !simUI.res.rule.ok.includes(decision) && decision !== 'inconclusive' && simUI.day < v.design.days
+        && !confirm('Твоё правило остановки ещё не разрешает это решение. Принять всё равно?')) return;
       df.querySelector('[type=submit]').disabled = true;
       try { await api(`/api/sim/ab/${enc(v.id)}/decide`, { method: 'POST', body: { decision, flags, reason, day: simUI.day } }); simMeta = null; simMeta = await api('/api/sim/ab'); renderSim(v.id); }
       catch (err) { $('#simDecErr').textContent = err.message; df.querySelector('[type=submit]').disabled = false; }
@@ -417,4 +447,64 @@ function bindSim(v) {
     try { await api(`/api/sim/ab/${enc(v.id)}/debrief`, { method: 'POST', body: {} }); } catch (err) { alert(err.message); }
     renderSim(v.id);
   });
+}
+
+
+// ---------- C24: байесовские результаты ----------
+function simBayesHtml(v, r) {
+  const cur = v.scenario.currency;
+  const val = (m, x) => (m.type === 'mean' ? `${esc(cur)}${(x ?? 0).toFixed(3)}` : pctS(x));
+  const p = r.metrics[0], b = p.bayes, th = r.rule.threshold, rope = r.rule.rope;
+  const ok = (k) => r.rule.ok.includes(k);
+  return `<p class="small" style="margin:0">Пользователей: A ${num(r.n.A)} · B ${num(r.n.B)}${r.seg ? ` · сегмент: ${esc(SIM_SEGS.find(([k]) => k === r.seg)?.[1])}` : ''}.
+      Разделение: B ${pctS(r.srm.shareB, 1)}, SRM p = ${r.srm.p}${r.srm.flag ? ' <span class="pill warn">перекос</span>' : ''}.</p>
+    <div class="sim-kpis">
+      <div><span class="muted small">P(B лучше)</span><strong>${pctS(b.pBetter, 1)}</strong></div>
+      <div><span class="muted small">95% CrI отн. разницы</span><strong>${signPct(b.ci[0])} … ${signPct(b.ci[1])}</strong></div>
+      <div><span class="muted small">потери, если B · если A</span><strong>${pctS(b.lossB)} · ${pctS(b.lossA)}</strong></div>
+      <div><span class="muted small">в ROPE ±${pctS(rope, 1)}</span><strong>${pctS(b.inRope, 0)}</strong></div>
+    </div>
+    <p class="small" style="margin:0">Правило (порог потерь ${pctS(th)}): ${ok('ship') ? '<span class="pill good">можно выкатить B</span>' : ''} ${ok('no_ship') ? '<span class="pill good">можно оставить A</span>' : ''}
+      ${ok('equivalent') ? '<span class="pill good">разницы нет (ROPE)</span>' : ''}${r.rule.ok.length ? '' : '<span class="pill neutral">пока ни одно решение не разрешено</span>'}</p>
+    ${simDensity(b, rope)}
+    ${simLossChart(r)}
+    <div class="table-box"><table class="apps small sim-table"><thead><tr><th>Метрика</th><th>A</th><th>B</th><th>Разница</th><th>95% CrI</th><th>P(B лучше)</th><th>Потери B / A</th><th>В ROPE</th></tr></thead><tbody>
+      ${r.metrics.map((m, i) => `<tr><td>${i ? '' : '<strong>'}${esc(m.name)}${i ? '' : '</strong>'}${m.better === 'down' ? ' <span class="muted">↓</span>' : ''}</td>
+        <td>${val(m, m.a)}</td><td>${val(m, m.b)}</td><td>${signPct(m.rel, 2)}</td><td class="muted">${m.bayes?.ci ? `${signPct(m.bayes.ci[0])} … ${signPct(m.bayes.ci[1])}` : '—'}</td>
+        <td>${pctS(m.bayes?.pBetter, 1)}</td><td class="muted">${pctS(m.bayes?.lossB)} / ${pctS(m.bayes?.lossA)}</td><td class="muted">${m.bayes?.inRope != null ? pctS(m.bayes.inRope, 0) : '—'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <details><summary class="small">Классическое прочтение (для сравнения)</summary>${r.metrics.map((m) => `<p class="small" style="margin:4px 0">${esc(m.name)}: ${signPct(m.rel, 2)}, p = ${m.p < 0.001 ? '<0.001' : m.p.toFixed(3)}</p>`).join('')}</details>
+    ${simUI.daily ? `<div class="table-box"><table class="apps small"><thead><tr><th>День</th><th></th><th>A</th><th>B</th><th>${esc(r.metrics[0].name)} A</th><th>B</th></tr></thead><tbody>
+      ${r.daily.map((x) => `<tr><td>${x.day}</td><td class="muted">${WD[x.wd]}</td><td>${num(x.nA)}</td><td>${num(x.nB)}</td><td>${r.metrics[0].type === 'mean' ? x.a.toFixed(3) : pctS(x.a)}</td><td>${r.metrics[0].type === 'mean' ? x.b.toFixed(3) : pctS(x.b)}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+}
+// Апостериорная плотность отн. разницы: гистограмма, ноль, ROPE и 95% CrI
+function simDensity(b, rope) {
+  if (!b?.hist) return '';
+  const W = 640, H = 150, L = 10, R = 10, T = 10, B2 = 24, n = b.hist.bins.length;
+  const lo = Math.min(b.hist.lo, -rope * 1.5), hi = Math.max(b.hist.hi, rope * 1.5);
+  const X = (x) => L + ((x - lo) / (hi - lo || 1)) * (W - L - R);
+  const max = Math.max(...b.hist.bins) || 1, w = (b.hist.hi - b.hist.lo) / n;
+  const bars = b.hist.bins.map((c, i) => { const x0 = X(b.hist.lo + i * w), x1 = X(b.hist.lo + (i + 1) * w), h = (c / max) * (H - T - B2);
+    return `<rect x="${x0}" y="${H - B2 - h}" width="${Math.max(0.5, x1 - x0 - 0.5)}" height="${h}" class="sim-bar"/>`; }).join('');
+  return `<figure class="sim-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Апостериорная плотность относительной разницы">
+      <rect x="${X(-rope)}" y="${T}" width="${X(rope) - X(-rope)}" height="${H - T - B2}" class="sim-rope"/>${bars}
+      <line x1="${X(0)}" x2="${X(0)}" y1="${T}" y2="${H - B2}" class="sim-zero"/>
+      <line x1="${X(b.ci[0])}" x2="${X(b.ci[1])}" y1="${H - B2 + 6}" y2="${H - B2 + 6}" class="sim-line"/>
+      <text x="${X(b.ci[0])}" y="${H - 4}" class="sim-ax" text-anchor="middle">${signPct(b.ci[0])}</text><text x="${X(b.ci[1])}" y="${H - 4}" class="sim-ax" text-anchor="middle">${signPct(b.ci[1])}</text></svg>
+    <figcaption class="muted small">Апостериорное отн. разницы B к A; серая полоса — ROPE, линия снизу — 95% CrI.</figcaption></figure>`;
+}
+// Ожидаемые потери по дням против порога заботы
+function simLossChart(r) {
+  const s = r.series.filter((x) => x.lossB != null);
+  if (s.length < 2) return '';
+  const W = 640, H = 170, L = 44, R = 10, T = 12, B2 = 24, th = r.rule.threshold;
+  const ymax = Math.max(th * 3, ...s.map((x) => Math.min(x.lossA, th * 20)), ...s.map((x) => Math.min(x.lossB, th * 20)));
+  const X = (d) => L + ((d - 1) / Math.max(1, r.until - 1)) * (W - L - R), Y = (y) => T + (1 - Math.min(y, ymax) / ymax) * (H - T - B2);
+  const line = (k, cls) => `<polyline points="${s.map((x) => `${X(x.day)},${Y(x[k])}`).join(' ')}" class="${cls}"/>`;
+  return `<figure class="sim-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ожидаемые потери по дням">
+      <line x1="${L}" x2="${W - R}" y1="${Y(th)}" y2="${Y(th)}" class="sim-plan"/><text x="${W - R}" y="${Y(th) - 4}" text-anchor="end" class="sim-ax">порог ${pctS(th)}</text>
+      ${line('lossB', 'sim-line')}${line('lossA', 'sim-line2')}
+      <text x="${L - 6}" y="${Y(ymax) + 4}" text-anchor="end" class="sim-ax">${pctS(ymax, 1)}</text><text x="${L - 6}" y="${Y(0) + 4}" text-anchor="end" class="sim-ax">0</text>
+      <text x="${L}" y="${H - 6}" class="sim-ax">день 1</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="sim-ax">день ${r.until}</text></svg>
+    <figcaption class="muted small">Ожидаемые потери накопительно: синяя — если выкатить B, серая — если оставить A. Ниже порога — правило разрешает это решение.</figcaption></figure>`;
 }
