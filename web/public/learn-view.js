@@ -297,7 +297,7 @@ async function loadCourseTopic(d, reload) {
   try { data = await api(`/api/topics/${enc(t.slug)}?lang=${topicLang}`); } catch (e) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
   if (!$('#topicPanel') || openTopic !== t.slug) return;
   const jobsFor = Object.fromEntries(Object.entries(d.jobs).filter(([, j]) => j.topic === t.slug));
-  const ctx = { jobs: jobsFor, topicReload: reload,
+  const ctx = { jobs: jobsFor, topicReload: reload, courseSlug: d.course.slug,
     topicStart: async (p, body) => { try { await api(`/api/learn/courses/${enc(d.course.slug)}/${p}`, { method: 'POST', body: body || {} }); } catch (e) { alert(e.message); } reload(); } };
   box.innerHTML = renderTopic(ctx, t, data);
   bindTopic(ctx, t, data);

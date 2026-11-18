@@ -168,6 +168,13 @@ def api(base):
                 ok("truth" not in fv, f"воронка {f['id']}: правда видна до ответа")
     code, _, _ = get(base, "/api/sim/funnel/nope-nope")
     ok(code == 404, f"неизвестная воронка → {code}")
+    # C25: разговоры при уроке — список читается у каждой темы с уроком
+    for t in ln["topics"][:40]:
+        if t.get("hasLesson"):
+            code, _, body = get(base, f"/api/topics/{q(t['slug'])}/chats")
+            ok(code == 200 and "list" in json.loads(body), f"вопросы по уроку {t['slug']} → {code}")
+    code, _, _ = get(base, "/api/topics/nope-nope/chats/abcdefgh")
+    ok(code == 404, f"неизвестный разговор → {code}")
     items =json.loads(get(base, "/api/vacancies")[2])["items"]
     details = []
     for it in items:

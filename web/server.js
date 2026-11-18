@@ -33,6 +33,7 @@ const cvv = require('./cv-versions');
 const courses = require('./courses');
 const simAb = require('./sim-ab');
 const simFunnel = require('./sim-funnel');
+const lessonChat = require('./lesson-chat');
 const { spawn } = require('node:child_process');
 
 const PORT = Number(process.env.PORT) || 4317;
@@ -1319,8 +1320,46 @@ app.get('/api/topics/:slug', wrap(async (req, res) => {
   res.json({ status: learning.status(slug), meta: m ? { video: m.video, video_status: m.video_status, sources: m.sources || [], cards: m.cards || [] } : null,
     lang, html: md ? safeHtml(marked(md)) : '', test: learning.publicTest(slug), last: learning.attempts(slug).slice(-1)[0] || null,
     review: courses.publicReview(slug) ? { ...courses.publicReview(slug), html: safeHtml(marked(courses.publicReview(slug).summary)) } : null, reviewJob: reviewJobs.get(slug) ? publicJob(jobs.get(reviewJobs.get(slug))) : null, courses: courses.coursesOf(slug),
-    insights: insights.rank({ text: `${m?.title_en || ''} ${slug.replace(/-/g, ' ')}`, tags: [slug] }, 5, { loose: true }) });
+    insights: insights.rank({ text: `${m?.title_en || ''} ${slug.replace(/-/g, ' ')}`, tags: [slug] }, 5, { loose: true }), chats: lessonChat.count(slug) });
 }));
+
+// ---------- C25: спросить Claude в уроке ----------
+const chatJobs = new Map(); // `${slug}/${id}` → jobId
+const chatJob = (slug, id) => { const j = jobs.get(chatJobs.get(`${slug}/${id}`)); return j ? publicJob(j) : null; };
+function chatView(slug, id) {
+  const c = lessonChat.get(slug, id);
+  return { ...c, messages: c.messages.map((m) => (m.role === 'assistant' ? { ...m, html: safeHtml(marked(m.text)) } : m)), job: chatJob(slug, id) };
+}
+function runChat(slug, id) {
+  const c = lessonChat.get(slug, id);
+  const lang = c.lang === 'ru' && learning.lesson(slug, 'ru') ? 'ru' : 'en';
+  const m = learning.meta(slug) || {};
+  const cs = c.course ? (() => { try { return courses.get(c.course); } catch { return null; } })() : null;
+  const last = c.messages[c.messages.length - 1];
+  const job = runJob({ kind: 'lessonchat', target: `topic:${slug}`, system: prompts.LESSON_CHAT_SYSTEM, partial: true,
+    prompt: prompts.lessonChat({ title: (lang === 'ru' ? m.title_ru : m.title_en) || m.title_en || slug, course: cs, lessonText: learning.lesson(slug, lang),
+      section: c.section, quote: c.quote, history: lessonChat.history(c), question: last.text }),
+    logFile: path.join(learning.dir(slug), 'chats', `${id}.log`),
+    onDone: async (j) => { lessonChat.answer(slug, id, j.finalText, { model: j.actualModel || j.model, cost: j.cost }); } });
+  job.label = m.title_en || slug;
+  chatJobs.set(`${slug}/${id}`, job.id);
+  return job;
+}
+const topicSlug = (req) => { const s2 = String(req.params.slug); if (!learning.slugOk(s2)) throw Object.assign(new Error('плохой slug'), { status: 400 }); return s2; };
+app.get('/api/topics/:slug/chats', wrap(async (req, res) => { try { res.json({ list: lessonChat.list(topicSlug(req)), actions: lessonChat.ACTIONS }); } catch (e) { cErr(res, e); } }));
+app.get('/api/topics/:slug/chats/:id', wrap(async (req, res) => { try { res.json(chatView(topicSlug(req), req.params.id)); } catch (e) { cErr(res, e); } }));
+app.post('/api/topics/:slug/chats', agentReady, wrap(async (req, res) => {
+  try { const slug = topicSlug(req); const c = lessonChat.create(slug, req.body || {}); const job = runChat(slug, c.id); res.json({ id: c.id, jobId: job.id }); } catch (e) { cErr(res, e); }
+}));
+app.post('/api/topics/:slug/chats/:id/messages', agentReady, wrap(async (req, res) => {
+  try {
+    const slug = topicSlug(req), id = req.params.id;
+    if (['running', 'queued'].includes(chatJob(slug, id)?.state)) return res.status(409).json({ error: 'ответ ещё пишется' });
+    lessonChat.ask(slug, id, req.body || {});
+    res.json({ jobId: runChat(slug, id).id });
+  } catch (e) { cErr(res, e); }
+}));
+app.delete('/api/topics/:slug/chats/:id', wrap(async (req, res) => { try { const slug = topicSlug(req); lessonChat.get(slug, req.params.id); lessonChat.remove(slug, req.params.id); res.json({ ok: true }); } catch (e) { cErr(res, e); } }));
 
 app.post('/api/topics/:slug/submit', wrap(async (req, res) => {
   const slug = String(req.params.slug);
@@ -4055,6 +4094,7 @@ app.get('/api/jobs/:id/stream', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
   res.flushHeaders();
   const send = (ev) => res.write(`data: ${JSON.stringify(ev)}\n\n`);
+  if (job.partialText) send({ kind: 'delta', text: job.partialText, snapshot: true });
   for (const ev of job.events) send(ev);
   if (job.state === 'done' || job.state === 'error') return res.end();
   const fn = (ev) => { send(ev); if (ev.done) res.end(); };

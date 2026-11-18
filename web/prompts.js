@@ -1003,5 +1003,21 @@ ${queries.slice(-8).map((x) => `- ${q(x)}`).join('\n') || '- запросов н
 Верни JSON: {"grade": 3, "verdict": "…", "missed": ["…"], "strong": ["…"], "interview": "…"}`;
 }
 
-module.exports = { simFunnelScenario, SIM_FUNNEL_SYSTEM, simFunnelDebrief, SIM_FUNNEL_DEBRIEF_SYSTEM, simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- C25: спросить Claude в уроке ----------
+const LESSON_CHAT_SYSTEM = `Ты — наставник, который объясняет учебный урок кандидату (продуктовый менеджер, готовится к интервью и работе).
+Отвечай по-русски, термины — по-английски, как в уроке. Объясняй через урок: его термины, формулы и примеры.
+Если ответа в уроке нет — так и скажи: «В уроке этого нет», и ответь из общих знаний, отметив это. Не выдумывай цифры «реальных компаний».
+Коротко: до ~250 слов, абзацы и списки markdown, формулы — обычным текстом. Пример с числами — где он помогает. Без вступлений и похвалы.`;
+function lessonChat({ title, course, lessonText, section, quote, history, question }) {
+  return `${course ? `Курс «${course.title}». Цель курса: ${course.goal}\n` : ''}Урок «${title}».
+Текст урока:
+"""
+${String(lessonText || '').slice(0, 16000)}
+"""
+${section ? `\nРаздел, где выделен фрагмент: «${section}».` : ''}${quote ? `\nВыделенный фрагмент:\n"""\n${quote}\n"""` : '\nФрагмент не выделен — вопрос по всему уроку.'}
+${history.length ? `\nРазговор до этого:\n${history.map((m) => `${m.role === 'user' ? 'Кандидат' : 'Ты'}: ${m.text}`).join('\n\n')}\n` : ''}
+Вопрос кандидата: ${question}`;
+}
+
+module.exports = { lessonChat, LESSON_CHAT_SYSTEM, simFunnelScenario, SIM_FUNNEL_SYSTEM, simFunnelDebrief, SIM_FUNNEL_DEBRIEF_SYSTEM, simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

@@ -959,3 +959,28 @@ a.test-row:hover { border-color: var(--accent); }
 .fn-l3 { fill: none; stroke: #7C3AED; stroke-width: 2; } .fn-l4 { fill: none; stroke: #15803D; stroke-width: 2; } .fn-l5 { fill: none; stroke: #9CA3AF; stroke-width: 2; }
 .fn-key { font-weight: 700; } .fn-key.sim-line { color: var(--accent); } .fn-key.fn-l1 { color: #C2410C; } .fn-key.fn-l2 { color: #0E7490; }
 .fn-key.fn-l3 { color: #7C3AED; } .fn-key.fn-l4 { color: #15803D; } .fn-key.fn-l5 { color: #9CA3AF; }
+/* C25 · спросить Claude в уроке */
+.lc-menu { position: fixed; z-index: 60; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(20, 22, 27, .16); padding: 6px; display: flex; flex-direction: column; }
+.lc-menu-h { font-size: 12px; color: var(--muted); padding: 4px 10px 6px; }
+.lc-menu button { text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; font-size: 14px; min-height: 0; }
+.lc-menu button:hover, .lc-menu button:focus { background: var(--sel); outline: none; }
+.lc-fab { position: fixed; z-index: 55; padding: 8px 14px; border-radius: 999px; background: var(--accent); color: var(--accent-text); border: 0; box-shadow: 0 4px 14px rgba(20, 22, 27, .2); font-size: 14px; }
+.lc-panel { position: fixed; z-index: 50; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw; background: var(--panel); border-left: 1px solid var(--line);
+  box-shadow: -8px 0 28px rgba(20, 22, 27, .08); display: flex; flex-direction: column; }
+.lc-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.lc-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.lc-quote { border-left: 3px solid var(--accent); background: var(--line-soft); padding: 8px 10px; border-radius: 0 8px 8px 0; font-size: 13px; white-space: pre-wrap; }
+.lc-quote summary { cursor: pointer; }
+.lc-msg { font-size: 14px; line-height: 1.5; }
+.lc-user { align-self: flex-end; background: var(--sel); padding: 8px 12px; border-radius: 12px 12px 4px 12px; max-width: 88%; white-space: pre-wrap; }
+.lc-bot { align-self: stretch; }
+.lc-bot p { margin: 0 0 8px; } .lc-bot ul, .lc-bot ol { margin: 0 0 8px; padding-left: 20px; } .lc-bot code { font-family: var(--mono); font-size: 13px; }
+.lc-stream { white-space: pre-wrap; }
+.lc-meta { margin-top: 2px; }
+.lc-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.lc-form { border-top: 1px solid var(--line); padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+.lc-form textarea { min-height: 64px; }
+.lc-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.lc-list .link-btn { text-align: left; }
+@media (min-width: 1100px) { body.lc-open { padding-right: 420px; } }
+@media (max-width: 640px) { .lc-panel { width: 100vw; border-left: 0; } }

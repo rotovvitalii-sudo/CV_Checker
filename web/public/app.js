@@ -1847,8 +1847,10 @@ function renderTopic(d, t, data) {
       ${jobBusy(jtr) ? '<span class="muted small"><span class="spin"></span>перевожу…</span>' : jtr?.state === 'error' ? `<span class="error small">${esc(jtr.error)}</span>` : ''}
       <span class="muted small">${!st.hasRu && data.lang === 'en' ? 'перевод ≈ $0.003, термины останутся английскими' : ''}</span>
       ${jobBusy(jl) ? '<span class="muted small"><span class="spin"></span>пересоздаю урок…</span>' : ''}
+      <button type="button" class="link-btn inline" data-chat-ask="${esc(t.slug)}" title="Вопрос по всему уроку — или выдели текст и нажми правую кнопку">спросить Claude</button>
+      ${data.chats ? `<button type="button" class="link-btn inline" data-chat-list="${esc(t.slug)}">мои вопросы · ${data.chats}</button>` : ''}
       <button type="button" class="link-btn inline right" id="tpClose">свернуть</button></div>
-    <article class="lesson">${data.html}</article>
+    <article class="lesson" data-lesson="${esc(t.slug)}" data-lang="${esc(data.lang)}" data-course="${esc(d.courseSlug || '')}">${data.html}</article>
     <section class="tp-video"><h4>Видео</h4>
       ${v ? `<div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${esc(ytId(v.url))}" title="${esc(v.title)}" loading="lazy"
           allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
