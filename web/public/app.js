@@ -314,7 +314,7 @@ function allTable(stages) {
       : i.letterFile ? 'готово'
         : i.hasCV ? `<span class="muted">${i.dictation ? 'есть надиктовка' : 'нет надиктовки'}</span>` : '<span class="muted">—</span>';
     const status = ACTIVE.includes(i.status) || ['followup', 'sent'].includes(s.key) ? `<span class="pill ${s.tone}">${s.table}</span>`
-      : `<span class="pill ${statusTone(i.status)}">${STATUS_LABELS[i.status]}${i.sent ? ` · ${fmtDay(i.sent.at)}` : ''}</span>`;
+      : `<span class="pill ${statusTone(i.status)}">${['replied', 'interview'].includes(i.status) && STAGE_LABEL[i.stage] && i.stage !== 'applied' ? STAGE_LABEL[i.stage] : STATUS_LABELS[i.status]}${i.sent ? ` · ${fmtDay(i.sent.at)}` : ''}</span>`;
     const where = [i.company, i.fit?.location, answersCount(i)].filter(Boolean).map(esc).join(' · ')
       + (i.salaryMismatch ? (i.salaryMismatch.kind === 'check' ? ` · <span class="muted" title="${esc(salaryWarn(i))}">вилка: проверь</span>`
         : ` · <span class="warn-text" title="${esc(salaryWarn(i))}">⚠ вилка</span>`) : '');
@@ -1557,7 +1557,7 @@ async function addTargetFromFeed(company) {
 const STORY_THEMES = { 'hard-task': 'Сложная задача', conflict: 'Конфликт или несогласие', failure: 'Провал и что изменил',
   uncertainty: 'Решение в неопределённости', influence: 'Убедил людей без подчинения' };
 // ---------- W10 · мои вопросы к интервьюеру (docs/specs/38-interviewer-questions.md) ----------
-const HRQ_STAGES = [['recruiter', 'Рекрутер'], ['hiring_manager', 'Hiring manager'], ['final', 'Финал']];
+const HRQ_STAGES = [['recruiter', 'Рекрутер'], ['technical', 'Техническое'], ['final', 'Финал']];
 const HRQ_STATUS = [['todo', 'не задан'], ['asked', 'задан'], ['skipped', 'не успел'], ['moot', 'отпал']];
 const HRQ_CAT = { role: 'роль и ожидания', team: 'команда', success: 'как меряют успех', company: 'компания и рынок', process: 'процесс и шаги' };
 const HRQ_BASIS = { pain: 'что болит', news: 'новость', value: 'ценность', gap: 'пробел в CV', role: 'роль', process: 'процесс' };
@@ -1692,7 +1692,7 @@ let practiceParent = null;
 let aboutTimer = null;
 
 function interviewVisible(d) {
-  return ['replied', 'interview', 'offer'].includes(d.status) || ['recruiter', 'hiring_manager', 'final', 'offer'].includes(d.stage) || !!d.interview?.prep;
+  return ['replied', 'interview', 'offer'].includes(d.status) || ['recruiter', 'test', 'technical', 'final', 'offer'].includes(d.stage) || !!d.interview?.prep;
 }
 
 function forgotSummary(log) {
@@ -1717,7 +1717,8 @@ function interviewBlock(d) {
       <div class="row" style="margin-top:10px"><button type="button" class="primary small" id="ivPrep">Подготовиться</button>
       <span class="hint" style="margin:0">«О себе», 5 историй из карточек, рискованные вопросы. Агент, ≈ $0.5–1.</span></div></details>`;
   }
-  const qs = P ? [['__about', 'Расскажите о себе'], ...(d.whyUs ? [[whyQuestion(d), whyQuestion(d)]] : []), ...P.risky.map((r) => [r.q, r.q])] : [];
+  const stageQs = Object.values(d.stagePrep || {}).flatMap((sp) => sp.questions.map((q) => [q.q, `${STAGE_LABEL[sp.stage]}: ${q.q}`])); // C26
+  const qs = P ? [['__about', 'Расскажите о себе'], ...(d.whyUs ? [[whyQuestion(d), whyQuestion(d)]] : []), ...P.risky.map((r) => [r.q, r.q]), ...stageQs] : [];
   if (!practiceQ && qs.length) practiceQ = qs[0][1];
   const last = log.slice().reverse().find((r) => r.question === practiceQ);
   const attempts = log.filter((r) => r.question === practiceQ);
@@ -2042,13 +2043,16 @@ function bindInterview(d) {
 
 // ---------- процесс найма: этапы, отказ, разбор после собеседования (W6, docs/specs/28-funnel-rejections.md) ----------
 
-const FUNNEL_STAGES = [['applied', 'Отклик'], ['recruiter', 'Рекрутер'], ['hiring_manager', 'Hiring manager'], ['final', 'Финал'], ['offer', 'Оффер']];
+const FUNNEL_STAGES = [['applied', 'Отклик'], ['recruiter', 'Рекрутер'], ['test', 'Тестовое'], ['technical', 'Техническое'], ['final', 'Финал'], ['offer', 'Оффер']];
+// C26: в статистике воронки тестовое не считается (этап необязательный)
+const STATS_STAGES = FUNNEL_STAGES.filter(([k]) => k !== 'test');
 const STAGE_LABEL = Object.fromEntries(FUNNEL_STAGES);
 // Типичные причины отсева после этапа — таблица воркбука, блок 1
 const STAGE_REASONS = {
   applied: 'Тишина после отклика: вакансия не про твой опыт; ключевой опыт спрятан глубоко в CV; ожидания не в бюджете.',
   recruiter: 'Отказ после рекрутера: долгий рассказ о себе; сумма вне вилки; непонятно, почему ищешь работу и почему эту.',
-  hiring_manager: 'Отказ после hiring manager: общие ответы, мало конкретных примеров; не видно, что сделал именно ты и как думал; опыт не дотягивает до задачи.',
+  test: 'Отказ после тестового: решение не про их задачу; мало обоснования выбора; нет цифр и проверки гипотез; сдал позже срока.',
+  technical: 'Отказ после технического: общие ответы, мало конкретных примеров; не видно, что сделал именно ты и как думал; слабая защита тестового; опыт не дотягивает до задачи.',
   final: 'Отказ после финала: не хватило ярких примеров «хочу работать с этим человеком»; нет вопросов к компании; у другого кандидата был опыт ровно в домене.',
 };
 const DEBRIEF_FIELDS = [['asked', 'Что спрашивали?'], ['concrete', 'Где отвечал конкретно?'], ['lost', 'Где поплыл?'], ['repeated', 'Какое уточнение повторялось?'], ['practice', 'Что потренировать к следующему?']];
@@ -2060,14 +2064,14 @@ function processBlock(d) {
   const cur = FUNNEL_STAGES.findIndex(([k]) => k === d.stage);
   const hist = Object.fromEntries((d.stageHistory || []).map((h) => [h.stage, h.at]));
   const r = d.rejection;
-  const late = r && ['hiring_manager', 'final'].includes(r.stage);
+  const late = r && ['technical', 'final'].includes(r.stage);
   return `<div class="card process-card" id="processCard">
     <h2><span class="n">↻</span>Процесс найма</h2>
     <div class="stages" role="group" aria-label="Этап">
       ${FUNNEL_STAGES.map(([k, l], i) => `<button type="button" class="stage ${i <= cur ? 'done' : ''} ${i === cur ? 'cur' : ''}" data-stage="${k}" ${d.status === 'rejected' ? 'disabled' : ''}>
         <span>${l}</span>${hist[k] ? `<small>${fmtDay(hist[k])}</small>` : ''}</button>`).join('')}
     </div>
-    ${testTasksLine(d)}
+    ${stageDetailHtml(d)}
     ${!d.stageExplicit && d.status !== 'rejected' ? '<p class="muted small" style="margin:6px 0 0">Этап выведен из статуса — отметь, до какого дошёл, нажав на него.</p>' : ''}
     ${r ? `<div class="reject-box"><strong>Отказ на этапе «${esc(STAGE_LABEL[r.stage] || r.stage)}»</strong> <span class="muted small">${fmtDay(r.at)}</span>
       ${r.facts ? `<p><span class="muted small">Знаю точно:</span> ${esc(r.facts)}</p>` : ''}
@@ -2085,7 +2089,7 @@ function processBlock(d) {
         <button type="button" class="link-btn inline danger" data-debdel="${esc(b.id)}">Удалить</button></details>`).join('')}</div>` : ''}
     ${cur >= 1 || (d.debriefs || []).length ? `<details class="debrief-new" ${sessionStorage.getItem(`cvc-deb-${d.name}`) ? 'open' : ''}><summary><strong>+ Разбор после собеседования</strong> <span class="muted small">5 минут, пока помнишь вопросы</span></summary>
       <form id="debForm" class="form-grid" style="margin-top:10px">
-        <label for="debStage">Этап</label><select id="debStage">${FUNNEL_STAGES.slice(1, 4).map(([k, l]) => `<option value="${k}" ${k === d.stage ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <label for="debStage">Этап</label><select id="debStage">${FUNNEL_STAGES.slice(1, 5).map(([k, l]) => `<option value="${k}" ${k === d.stage ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${hrqAskedHtml(d, d.stage) ? `<span></span><div>${hrqAskedHtml(d, d.stage)}</div>` : ''}
         ${DEBRIEF_FIELDS.map(([k, l]) => `<label for="deb-${k}">${l}</label><textarea id="deb-${k}" data-deb="${k}" rows="2"></textarea>`).join('')}
         <span></span><div class="row"><button type="submit" class="primary small">Сохранить разбор</button><span class="error" id="debErr"></span></div>
@@ -2096,6 +2100,7 @@ function processBlock(d) {
 function bindProcess(d) {
   const box = $('#processCard');
   if (!box) return;
+  bindStageDetail(d);
   box.querySelectorAll('[data-stage]').forEach((b) => b.addEventListener('click', async () => {
     try { await api(`/api/vacancies/${enc(d.name)}`, { method: 'PATCH', body: { stage: b.dataset.stage } }); } catch (e) { alert(e.message); return; }
     refreshAfterSend();
@@ -2131,7 +2136,7 @@ function openRejectDialog(it) {
   const r = it.rejection || {};
   $('#rejectRole').textContent = `${it.role} — ${it.company}`;
   const st = r.stage || it.stage || 'applied';
-  $('#rejStage').innerHTML = FUNNEL_STAGES.slice(0, 4).map(([k, l]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${l}</option>`).join('');
+  $('#rejStage').innerHTML = FUNNEL_STAGES.slice(0, 5).map(([k, l]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${l}</option>`).join('');
   $('#rejFacts').value = r.facts || '';
   $('#rejVersion').value = r.version || '';
   $('#rejFeedback').value = r.feedback || '';
@@ -2838,35 +2843,40 @@ window.addEventListener('focus', refreshDictationFromServer);
 
 // ---------- доска заявок (S2, docs/specs/04-application-board.md) ----------
 
-const BOARD_COLS = [
-  ['prep', 'Готовится', ['new', 'ready']],
-  ['sent', 'Отправлено', ['sent']],
-  ['replied', 'Ответили', ['replied']],
-  ['interview', 'Интервью', ['interview']],
-  ['offer', 'Оффер', ['offer']],
-];
-const MOVE_LABELS = { prep: 'Готовится', sent: 'Отправлено', replied: 'Ответили', interview: 'Интервью', offer: 'Оффер', rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа' };
+// C26: после отправки колонки — этапы собеседований (рекрутер → тестовое → техническое → финал)
+const BOARD_COLS = [['prep', 'Готовится'], ['sent', 'Отправлено'], ['recruiter', 'Рекрутер'], ['test', 'Тестовое'], ['technical', 'Техническое'], ['final', 'Финал'], ['offer', 'Оффер']];
+const BOARD_STAGES = ['recruiter', 'test', 'technical', 'final'];
+const MOVE_LABELS = { prep: 'Готовится', sent: 'Отправлено', recruiter: 'Рекрутер', test: 'Тестовое', technical: 'Техническое', final: 'Финал', offer: 'Оффер',
+  rejected: 'Отказ', skip: 'Не подаюсь', no_reply: 'Без ответа' };
 let homeView = 'table';
 try { homeView = localStorage.getItem('cvc-home-view') || 'table'; } catch {}
 
-const colOf = (status) => (ARCHIVE.includes(status) ? status : (BOARD_COLS.find(([, , st]) => st.includes(status)) || BOARD_COLS[0])[0]);
+function colOf(i) {
+  const st = i.status;
+  if (ARCHIVE.includes(st)) return st;
+  if (st === 'offer') return 'offer';
+  if (st === 'sent') return 'sent';
+  if (st === 'replied' || st === 'interview') return BOARD_STAGES.includes(i.stage) ? i.stage : st === 'replied' ? 'recruiter' : 'technical';
+  return 'prep';
+}
 
 // Сколько дней заявка в текущем статусе: последняя запись истории о переходе в него
 function daysOnStage(i) {
   const h = (i.history || []).filter((x) => x.to === i.status).pop();
-  // «Отправлено» считаем от даты отправки из диалога M1 — отметить могли позже, чем отправил
-  const since = (i.status === 'sent' && i.sent?.at) || h?.at || (i.created && new Date(i.created).toISOString());
+  // «Отправлено» считаем от даты отправки из диалога M1 — отметить могли позже, чем отправил; этап собеседования — от отметки этапа (C26)
+  const sh = BOARD_STAGES.includes(colOf(i)) ? (i.stageHistory || []).filter((x) => x.stage === colOf(i)).pop() : null;
+  const since = (i.status === 'sent' && i.sent?.at) || sh?.at || h?.at || (i.created && new Date(i.created).toISOString());
   return since ? Math.max(0, Math.floor((Date.now() - Date.parse(since)) / DAY_MS)) : null;
 }
 
 // S2 P1 · «застряла»: дольше порога на стадии — пора напомнить, подать или убрать в архив
-const STUCK_DAYS = { prep: 5, replied: 7, interview: 7, offer: 5 }; // «Отправлено» не застревает — само уходит в «Без ответа»
-const STUCK_HINTS = { prep: 'подай или убери в «Не подаюсь»', sent: 'напомни или убери в архив', replied: 'спроси о следующем шаге',
-  interview: 'спроси о решении', offer: 'ответь на оффер' };
+const STUCK_DAYS = { prep: 5, recruiter: 7, test: 10, technical: 7, final: 7, offer: 5 }; // «Отправлено» не застревает — само уходит в «Без ответа»
+const STUCK_HINTS = { prep: 'подай или убери в «Не подаюсь»', sent: 'напомни или убери в архив', recruiter: 'спроси о следующем шаге',
+  test: 'сдай тестовое или спроси о сроках', technical: 'спроси о решении', final: 'спроси о решении', offer: 'ответь на оффер' };
 let boardStuck = false;
 try { boardStuck = localStorage.getItem('cvc-board-stuck') === '1'; } catch {}
 function isStuck(i) {
-  const col = colOf(i.status);
+  const col = colOf(i);
   const d = daysOnStage(i);
   return !!STUCK_DAYS[col] && d != null && d >= STUCK_DAYS[col];
 }
@@ -2874,7 +2884,7 @@ function isStuck(i) {
 function boardCard(i, st) {
   const fit = i.fit?.total;
   const days = daysOnStage(i);
-  const col = colOf(i.status);
+  const col = colOf(i);
   const meta = [];
   if (col === 'prep') meta.push(`<span class="pill ${st.tone}">${st.key === 'agent' ? '<span class="spin"></span>' : ''}${st.chip}</span>`);
   if (i.sent && ['sent', 'replied', 'interview', 'offer'].includes(i.status)) {
@@ -2886,6 +2896,8 @@ function boardCard(i, st) {
   if (i.status === 'sent' && i.waiting?.daysSinceSent >= 1) {
     meta.push(`<span class="muted small" title="без ответа уйдёт в архив ${fmtDay(i.waiting.noReplyAt)}">ждёт ответа ${daysWord(i.waiting.daysSinceSent)}</span>`);
   }
+  const meet = i.stages?.[col]?.when; // C26: ближайшая встреча этапа
+  if (meet && Date.parse(meet) > Date.now() - 864e5) meta.push(`<span class="pill info">встреча ${esc(new Date(meet).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>`);
   if (i.topics) meta.push(`<span class="small ${i.topics.passed === i.topics.total ? 'good-text' : 'muted'}" title="темы подготовки к интервью сданы">темы ${i.topics.passed}/${i.topics.total}</span>`);
   const targets = Object.keys(MOVE_LABELS).filter((k) => k !== col);
   return `<article class="bcard" draggable="true" data-name="${esc(i.name)}">
@@ -2911,11 +2923,11 @@ function boardView(stages) {
   const vis = boardStuck ? all.filter(isStuck) : all;
   const toolbar = `<div class="row board-tools"><button type="button" class="small ${boardStuck ? 'primary' : ''}" id="boardStuck" aria-pressed="${boardStuck}">
       Только застрявшие · ${stuckN}</button>
-    <span class="muted small">Порог: подготовка и оффер — 5 дней, «Ответили» и «Интервью» — 7. «Отправлено» без ответа само уходит в архив.</span></div>`;
-  const cols = BOARD_COLS.map(([k, label, st]) => {
-    const list = vis.filter((i) => st.includes(i.status))
+    <span class="muted small">Порог: подготовка и оффер — 5 дней, этапы собеседований — 7 (тестовое — 10). «Отправлено» без ответа само уходит в архив.</span></div>`;
+  const cols = BOARD_COLS.map(([k, label]) => {
+    const list = vis.filter((i) => colOf(i) === k)
       .sort((a, b) => (daysOnStage(b) ?? 0) - (daysOnStage(a) ?? 0));
-    const total = onBoard.filter((i) => st.includes(i.status)).length;
+    const total = onBoard.filter((i) => colOf(i) === k).length;
     const share = onBoard.length ? Math.round((total / onBoard.length) * 100) : 0;
     return `<section class="bcol" data-drop="${k}" aria-label="${label}">
       <h3><span>${label}</span><span class="mono muted" title="${boardStuck ? 'застрявших / всего в колонке' : 'доля от заявок на доске (без архива)'}">${boardStuck ? `${list.length} / ${total}` : `${total} · ${share}%`}</span></h3>
@@ -2938,9 +2950,16 @@ function boardView(stages) {
 // Перенос: «Отправлено» — через диалог M1, назад в «Готовится» из «Отправлено» — отмена отправки
 async function moveTo(name, target) {
   const i = items.find((x) => x.name === name);
-  if (!i || !target || colOf(i.status) === target) return;
+  if (!i || !target || colOf(i) === target) return;
   try {
     if (target === 'sent' && !i.sent) { openSentDialog(i); return; }
+    // C26: этапы собеседований и оффер — через этап (статус подтягивается сервером); до отправки — сначала диалог M1
+    if (BOARD_STAGES.includes(target) || (target === 'offer' && i.sent)) {
+      if (!i.sent) { openSentDialog(i); return; }
+      await api(`/api/vacancies/${enc(name)}`, { method: 'PATCH', body: { stage: target } });
+      loadList();
+      return;
+    }
     if (target === 'prep') {
       if (i.status === 'sent' && i.sent) {
         if (!confirm(`Отменить отправку «${i.role}»? Заявка вернётся в подготовку, след останется в истории.`)) return;
@@ -3206,10 +3225,11 @@ function statsView() {
 
   // W6: воронка по этапам воркбука — сколько заявок дошли хотя бы до этапа
   const reached = (k) => sent.filter((x) => FUNNEL_STAGES.findIndex(([s]) => s === x.i.stage) >= FUNNEL_STAGES.findIndex(([s]) => s === k)).length;
+  const FS = STATS_STAGES;
   const funnel = [['Всего заявок', all.length, null], ['Отправлено', sent.length, all.length]];
-  FUNNEL_STAGES.slice(1).forEach(([k, l], idx) => funnel.push([l, reached(k), idx === 0 ? sent.length : reached(FUNNEL_STAGES[idx][0])]));
+  FS.slice(1).forEach(([k, l], idx) => funnel.push([l, reached(k), idx === 0 ? sent.length : reached(FS[idx][0])]));
   // Самое сильное сужение: переход с наименьшей долей, где на входе ≥ MIN_N заявок (иначе это шум)
-  const drops = funnel.slice(2).map(([l, n, prev], i) => ({ l, n, prev, r: prev ? n / prev : null, from: FUNNEL_STAGES[i][0] })).filter((x) => x.prev >= MIN_N);
+  const drops = funnel.slice(2).map(([l, n, prev], i) => ({ l, n, prev, r: prev ? n / prev : null, from: FS[i][0] })).filter((x) => x.prev >= MIN_N);
   const worst = drops.length ? drops.reduce((m, x) => (x.r < m.r ? x : m)) : null;
   const top = Math.max(1, all.length);
 
@@ -4789,3 +4809,99 @@ function sortSectorList(list) {
 }
 
 // Первый route() — в конце master-view.js, когда загружены все экраны
+
+
+// ---------- C26: этапы собеседований — встреча, впечатления, вопросы и подготовка (docs/specs/51-interview-stages.md) ----------
+const IV_STAGES = [['recruiter', 'Рекрутер'], ['test', 'Тестовое'], ['technical', 'Техническое'], ['final', 'Финал']];
+const STAGE_FORMATS = [['', '—'], ['video', 'видео'], ['phone', 'телефон'], ['office', 'офис'], ['async', 'асинхронно']];
+const STAGE_RESULTS = [['', '—'], ['planned', 'назначено'], ['done', 'прошло'], ['waiting', 'жду ответа'], ['passed', 'прошёл дальше'], ['failed', 'не прошёл']];
+const PREP_CATS = { case: 'Продуктовый кейс', metrics: 'Метрики и аналитика', experiments: 'Эксперименты', test_defense: 'Защита тестового', delivery: 'Разработка и приоритизация',
+  domain: 'Домен', motivation: 'Мотивация и «почему мы»', culture: 'Ценности и культура', leadership: 'Лидерство и конфликты', vision_90: 'Видение роли и 90 дней',
+  money: 'Деньги и условия', about_company: 'О компании' };
+let stageTab = null;
+let stageQa = null; // правка пар «вопрос — ответ» до сохранения
+
+function stageDetailHtml(d) {
+  if (d.status === 'rejected' && !Object.keys(d.stages || {}).length) return '';
+  const cur = IV_STAGES.some(([k]) => k === d.stage) ? d.stage : 'recruiter';
+  const st = stageTab?.name === d.name && IV_STAGES.some(([k]) => k === stageTab.k) ? stageTab.k : cur;
+  const x = d.stages?.[st] || {};
+  const qa = stageQa?.st === st && stageQa.name === d.name ? stageQa.list : (x.qa || []);
+  const opt = (arr, v) => arr.map(([k, l]) => `<option value="${k}" ${k === (v || '') ? 'selected' : ''}>${l}</option>`).join('');
+  const prepAble = st === 'technical' || st === 'final';
+  const prep = d.stagePrep?.[st];
+  const pj = d.jobs?.stageprep;
+  return `<div class="stage-detail" id="stageDetail">
+    <div class="seg small" role="group" aria-label="Этап собеседования">${IV_STAGES.map(([k, l]) => `<button type="button" data-stab="${k}" aria-pressed="${k === st}">${l}${d.stages?.[k] ? ' ·' : ''}</button>`).join('')}</div>
+    ${st === 'test' ? testTasksLine(d) : ''}
+    <form class="form-grid two" id="stageForm" style="margin-top:8px">
+      <label>Когда<input name="when" type="datetime-local" value="${esc(x.when || '')}"></label>
+      <label>С кем<input name="who" value="${esc(x.who || '')}" placeholder="роль, имя — по желанию"></label>
+      <label>Формат<select name="format">${opt(STAGE_FORMATS, x.format)}</select></label>
+      <label>Итог<select name="result">${opt(STAGE_RESULTS, x.result)}</select></label>
+    </form>
+    <div style="margin-top:8px"><span class="small">Впечатления — о чём говорили, как прошло, что запомнилось</span>
+      <div class="dict"><textarea id="stNotes" rows="4" placeholder="Надиктуй сразу после встречи">${esc(x.notes || '')}</textarea>
+        <button type="button" class="mic" id="stMic" title="Диктовка голосом" aria-label="Диктовка голосом">🎤</button></div><div class="hint" id="stMicHint"></div></div>
+    <div style="margin-top:8px"><span class="small">Вопросы и мои ответы</span>
+      ${qa.map((p, i) => `<div class="st-qa"><input data-qaq="${i}" value="${esc(p.q)}" placeholder="вопрос"><textarea data-qaa="${i}" rows="2" placeholder="как ответил">${esc(p.a || '')}</textarea>
+        <div class="row small" style="gap:10px"><label class="sim-opt"><input type="checkbox" data-qaw="${i}" ${p.weak ? 'checked' : ''}> ответил слабо</label>
+        <button type="button" class="link-btn inline" data-qadel="${i}">убрать</button></div></div>`).join('')}
+      <button type="button" class="link-btn inline small" id="stQaAdd">+ вопрос</button>
+      <p class="muted small" style="margin:2px 0 0">Развёрнутые ответы (≥ 40 слов) разбираются на новые факты в «Предложено добавить» — в базу только по «Добавить».</p></div>
+    <label class="small" style="display:block;margin-top:8px">Что сказали о следующем шаге и сроках<input id="stNext" value="${esc(x.next || '')}"></label>
+    <div class="row" style="margin-top:8px"><button type="button" class="primary small" id="stSave">Сохранить этап</button>
+      ${x.updated ? `<span class="muted small">сохранено ${fmtDay(x.updated)}</span>` : ''}<span class="error" id="stErr"></span></div>
+    ${prepAble ? `<div class="stage-prep">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h3 class="st-h" style="margin:0">Подготовка: ${st === 'technical' ? 'техническое' : 'финал'}</h3>
+        ${jobBusy(pj) ? '<span class="muted small"><span class="spin"></span>собираю подготовку…</span>'
+          : `<button type="button" class="${prep ? 'small' : 'primary small'}" id="stPrep">${prep ? 'Обновить подготовку' : `Подготовиться к ${st === 'technical' ? 'техническому' : 'финалу'}`} (≈ $0.05–0.1)</button>`}</div>
+      ${pj?.state === 'error' ? `<p class="error small">Ошибка: ${esc(pj.error)}</p>` : ''}
+      <p class="muted small" style="margin:4px 0 0">Учитывает вакансию, CV, разбор компании${st === 'technical' ? ', тестовое' : ', деньги (цель и якорь)'} и всё, что записано на прошлых этапах.</p>
+      ${prep ? stagePrepHtml(d, prep) : ''}</div>` : ''}
+  </div>`;
+}
+function stagePrepHtml(d, p) {
+  const byCat = {};
+  for (const q of p.questions) (byCat[q.cat] = byCat[q.cat] || []).push(q);
+  return `${p.focus ? `<p style="margin:8px 0"><strong>Что проверяют:</strong> ${esc(p.focus)}</p>` : ''}
+    ${p.weak.length ? `<div class="banner warn" style="margin:6px 0"><div><strong>Слабые места с прошлых этапов</strong><ul class="tight small" style="margin:4px 0 0">${p.weak.map((w) => `<li>${esc(w.what)} — <em>${esc(w.fix)}</em></li>`).join('')}</ul></div></div>` : ''}
+    ${Object.entries(byCat).map(([c, qs]) => `<h4 style="margin:10px 0 4px">${esc(PREP_CATS[c] || c)}</h4><ul class="tight">${qs.map((q) => `<li><strong>${esc(q.q)}</strong>
+      <div class="muted small">${esc(q.why)}</div><div class="small">Хотят услышать: ${esc(q.want)}</div>
+      <div class="small">${q.story ? `Опора: <a href="#/cases/card/${enc(q.story)}">${esc(q.story)}</a> · ` : ''}${esc(q.hint)}</div>
+      ${d.interview?.prep ? `<button type="button" class="link-btn inline small" data-sttrain="${esc(q.q)}">тренировать</button>` : ''}</li>`).join('')}</ul>`).join('')}
+    ${p.repeat.length ? `<p class="small" style="margin:8px 0 0"><strong>Повторить:</strong> ${p.repeat.map(esc).join(' · ')}</p>` : ''}
+    ${p.ask.length ? `<p class="small" style="margin:8px 0 0"><strong>Спросить у интервьюера:</strong></p><ul class="tight small">${p.ask.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${p.checklist.length ? `<p class="small" style="margin:8px 0 0"><strong>Чеклист:</strong></p><ul class="tight small">${p.checklist.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    <p class="muted small" style="margin:6px 0 0">Собрано ${fmtDay(p.at)}${d.interview?.prep ? '' : ' · тренажёр появится после «Подготовиться к собеседованию» ниже'}.</p>`;
+}
+function bindStageDetail(d) {
+  const box = $('#stageDetail');
+  if (!box) return;
+  const cur = IV_STAGES.some(([k]) => k === d.stage) ? d.stage : 'recruiter';
+  const st = stageTab?.name === d.name && IV_STAGES.some(([k]) => k === stageTab.k) ? stageTab.k : cur;
+  const readQa = () => [...box.querySelectorAll('[data-qaq]')].map((i) => ({ q: i.value, a: box.querySelector(`[data-qaa="${i.dataset.qaq}"]`).value, weak: box.querySelector(`[data-qaw="${i.dataset.qaq}"]`).checked }));
+  const keep = () => { stageQa = { name: d.name, st, list: readQa() }; };
+  box.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { stageTab = { name: d.name, k: b.dataset.stab }; stageQa = null; renderDetail(); }));
+  $('#stQaAdd').addEventListener('click', () => { keep(); stageQa.list.push({ q: '', a: '', weak: false }); renderDetail(); });
+  box.querySelectorAll('[data-qadel]').forEach((b) => b.addEventListener('click', () => { keep(); stageQa.list.splice(Number(b.dataset.qadel), 1); renderDetail(); }));
+  setupMic($('#stNotes'), () => {}, { btn: $('#stMic'), hint: $('#stMicHint'), link: `${location.origin}/#/v/${enc(d.name)}` });
+  $('#stSave').addEventListener('click', async (e) => {
+    const f = $('#stageForm');
+    e.target.disabled = true;
+    try {
+      await api(`/api/vacancies/${enc(d.name)}/stages/${st}`, { method: 'PUT', body: { when: f.when.value, who: f.who.value, format: f.format.value, result: f.result.value,
+        notes: $('#stNotes').value, next: $('#stNext').value, qa: readQa().filter((x) => x.q.trim()) } });
+      stageQa = null; flash('Этап сохранён.'); loadDetail();
+    } catch (err) { $('#stErr').textContent = err.message; e.target.disabled = false; }
+  });
+  $('#stPrep')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await api(`/api/vacancies/${enc(d.name)}/stages/${st}/prep`, { method: 'POST', body: {} }); } catch (err) { alert(err.message); }
+    loadDetail();
+  });
+  box.querySelectorAll('[data-sttrain]').forEach((b) => b.addEventListener('click', () => {
+    practiceQ = b.dataset.sttrain; practiceParent = null; loadDetail();
+    setTimeout(() => document.querySelector('.trainer')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 400);
+  }));
+}

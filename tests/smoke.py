@@ -173,6 +173,11 @@ def api(base):
         if t.get("hasLesson"):
             code, _, body = get(base, f"/api/topics/{q(t['slug'])}/chats")
             ok(code == 200 and "list" in json.loads(body), f"вопросы по уроку {t['slug']} → {code}")
+    # C26: этапы собеседований — только новые ключи, hiring_manager мигрирован в technical
+    STAGES26 = {None, "applied", "recruiter", "test", "technical", "final", "offer"}
+    for it in json.loads(get(base, "/api/vacancies")[2])["items"]:
+        ok(it.get("stage") in STAGES26, f"этап {it['name'][:40]}: {it.get('stage')}")
+        ok(all(k in ("recruiter", "test", "technical", "final") for k in (it.get("stages") or {})), f"впечатления этапов {it['name'][:40]}")
     code, _, _ = get(base, "/api/topics/nope-nope/chats/abcdefgh")
     ok(code == 404, f"неизвестный разговор → {code}")
     items =json.loads(get(base, "/api/vacancies")[2])["items"]

@@ -124,6 +124,7 @@ app.get('/api/vacancies/:name', wrap(async (req, res) => {
   info.whyUsFacts = answerFactsFor(name, WHY_DICT_Q, info.whyUsDictation);
   info.hrq = hrq.read(store.outDir(name)); // W10
   info.testTasks = tests.forVacancy(name); // C14
+  info.stagePrep = Object.fromEntries(['technical', 'final'].map((st) => [st, readStagePrep(name, st)]).filter(([, v]) => v)); // C26
   Object.assign(info, cvVersionInfo(name)); // C15
   info.submittedAnswers = (info.submittedAnswers || []).map((x) => ({ ...x, facts: answerFactsFor(name, x.q, x.a) }));
   info.letterPrev = letterPrev(name);
@@ -157,14 +158,14 @@ app.patch('/api/vacancies/:name', wrap(async (req, res) => {
   if (typeof req.body.dictation === 'string') a.dictation = req.body.dictation;
   if (typeof req.body.formQuestions === 'string') a.formQuestions = req.body.formQuestions.slice(0, 8000);
   if (typeof req.body.whyUsDictation === 'string') a.whyUsDictation = req.body.whyUsDictation.slice(0, 3000); // W9a
-  // W6: этап воронки; статус подтягивается: рекрутер → «Ответили», hiring manager / финал → «Интервью», оффер → «Оффер»
+  // W6 / C26: этап воронки; статус подтягивается: рекрутер → «Ответили», тестовое / техническое / финал → «Интервью», оффер → «Оффер»
   if (req.body.stage !== undefined) {
     if (!store.FUNNEL.includes(req.body.stage)) return res.status(400).json({ error: 'неизвестный этап' });
     if (!a.sent) return res.status(400).json({ error: 'этапы — после отметки отправки' });
     if (a.stage !== req.body.stage) {
       a.stage = req.body.stage;
       (a.stageHistory = a.stageHistory || []).push({ at: new Date().toISOString(), stage: a.stage });
-      const to = { recruiter: 'replied', hiring_manager: 'interview', final: 'interview', offer: 'offer' }[a.stage];
+      const to = { recruiter: 'replied', test: 'interview', technical: 'interview', final: 'interview', offer: 'offer' }[a.stage];
       const rank = { sent: 1, replied: 2, interview: 3, offer: 4 };
       if (to && !['rejected', 'skip'].includes(a.status) && (rank[to] || 0) > (rank[a.status] || 0)) store.setStatus(a, to, { note: `этап: ${a.stage}` });
     }
@@ -1476,6 +1477,101 @@ setInterval(() => {
     }
   }
 }, 24 * 60 * 60 * 1000);
+
+// ---------- C26: этапы собеседований — впечатления и подготовка (docs/specs/51-interview-stages.md) ----------
+const STAGE_RESULTS = ['planned', 'done', 'waiting', 'passed', 'failed'];
+const STAGE_FORMATS = ['video', 'phone', 'office', 'async'];
+const stagePrepFile = (name, st) => path.join(store.outDir(name), `11-stage-${st}.json`);
+function readStagePrep(name, st) { try { return JSON.parse(fs.readFileSync(stagePrepFile(name, st), 'utf8')); } catch { return null; } }
+// Впечатления этапа: встреча, итог, надиктовка, вопросы и мои ответы, что сказали о следующем шаге
+app.put('/api/vacancies/:name/stages/:stage', wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const st = req.params.stage;
+  if (!store.INTERVIEW_STAGES.includes(st)) return res.status(400).json({ error: 'неизвестный этап' });
+  const a = store.app(name);
+  const b = req.body || {};
+  const prev = a.stages?.[st] || {};
+  const qa = (Array.isArray(b.qa) ? b.qa : prev.qa || []).map((x) => ({ q: clip(x?.q, 600), a: clip(x?.a, 3000), weak: !!x?.weak })).filter((x) => x.q).slice(0, 30);
+  const next = {
+    when: clip(b.when ?? prev.when, 40), who: clip(b.who ?? prev.who, 200), format: STAGE_FORMATS.includes(b.format) ? b.format : prev.format || '',
+    result: STAGE_RESULTS.includes(b.result) ? b.result : prev.result || '', notes: clip(b.notes ?? prev.notes, 6000), next: clip(b.next ?? prev.next, 1500),
+    qa, updated: new Date().toISOString(),
+  };
+  a.stages = { ...(a.stages || {}), [st]: next };
+  store.save();
+  // C13: развёрнутые ответы на собеседовании → факты в «Предложено добавить» (только по «Добавить»)
+  for (const x of qa) if (x.a) try { startAnswerFacts({ vacancy: name, origin: 'stage', question: x.q, answer: x.a }); } catch { /* разбор фактов не должен ронять сохранение */ }
+  res.json({ ok: true, stage: next });
+}));
+// Контекст прошлых этапов: впечатления, вопросы и ответы, разборы W6
+function stageHistoryText(a, upto) {
+  const order = store.INTERVIEW_STAGES;
+  const L = { recruiter: 'Рекрутер', test: 'Тестовое', technical: 'Техническое', final: 'Финал' };
+  return order.slice(0, order.indexOf(upto)).map((st) => {
+    const x = a.stages?.[st];
+    const deb = (a.debriefs || []).filter((d) => d.stage === st);
+    if (!x && !deb.length) return null;
+    return [`## ${L[st]}${x?.when ? ` (${x.when})` : ''}${x?.who ? ` — ${x.who}` : ''}${x?.result ? ` · итог: ${x.result}` : ''}`,
+      x?.notes ? `Впечатления: ${x.notes}` : '', x?.next ? `О следующем шаге сказали: ${x.next}` : '',
+      ...(x?.qa || []).map((q) => `- Вопрос: ${q.q}${q.a ? `\n  Мой ответ: ${q.a}` : ''}${q.weak ? '\n  (ответил слабо)' : ''}`),
+      ...deb.map((d) => `Разбор: спрашивали — ${d.asked || '—'}; конкретно — ${d.concrete || '—'}; поплыл — ${d.lost || '—'}; тренировать — ${d.practice || '—'}`)]
+      .filter(Boolean).join('\n');
+  }).filter(Boolean);
+}
+function testTaskText(name) {
+  const t = tests.forVacancy(name)[0];
+  if (!t) return '';
+  const d = tests.taskDir(t.slug);
+  const task = readText(path.join(d, 'task.md')).slice(0, 2500);
+  const plan = readText(path.join(d, 'plan.md')).slice(0, 2000);
+  const deb = readText(path.join(d, 'debrief.md')).slice(0, 2500);
+  return [`Задание: ${task}`, plan ? `План решения: ${plan}` : '', deb ? `Разбор после сдачи: ${deb}` : '', t.result ? `Итог: ${t.result}` : ''].filter(Boolean).join('\n');
+}
+function normStagePrep(raw, cardIds) {
+  const s2 = (x, n) => String(x ?? '').trim().slice(0, n);
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  return {
+    focus: s2(raw?.focus, 600),
+    questions: arr(raw?.questions).map((q) => ({ cat: s2(q?.cat, 30), q: s2(q?.q, 400), why: s2(q?.why, 400), want: s2(q?.want, 600), hint: s2(q?.hint, 500),
+      story: cardIds.includes(q?.story) ? q.story : null })).filter((q) => q.q).slice(0, 16),
+    weak: arr(raw?.weak).map((w) => ({ what: s2(w?.what, 400), fix: s2(w?.fix, 400) })).filter((w) => w.what).slice(0, 6),
+    repeat: arr(raw?.repeat).map((x) => s2(x, 160)).filter(Boolean).slice(0, 6),
+    ask: arr(raw?.ask).map((x) => s2(x, 300)).filter(Boolean).slice(0, 6),
+    checklist: arr(raw?.checklist).map((x) => s2(x, 200)).filter(Boolean).slice(0, 8),
+  };
+}
+app.post('/api/vacancies/:name/stages/:stage/prep', agentReady, wrap(async (req, res) => {
+  const name = store.safeName(req.params.name);
+  const st = req.params.stage;
+  if (!['technical', 'final'].includes(st)) return res.status(400).json({ error: 'подготовка — к техническому и финалу' });
+  const a = store.app(name);
+  if (busy(a, 'stageprep')) return res.status(409).json({ error: 'подготовка уже собирается' });
+  const vac = readText(path.join(store.VACANCIES, `${name}.md`));
+  if (!vac) return res.status(400).json({ error: NO_TEXT });
+  const dir = store.outDir(name);
+  fs.mkdirSync(dir, { recursive: true });
+  const cardIds = fs.existsSync(CARDS_DIR) ? fs.readdirSync(CARDS_DIR).filter((f) => f.endsWith('.md') && f !== 'INDEX.md').map((f) => f.slice(0, -3)) : [];
+  const fit = a.fit || {};
+  const topics = learning.vacancyTopics(dir)?.topics?.map((t) => `${t.title_en || t.slug}${learning.status(t.slug).passed ? ' (сдано)' : ''}`).join('; ') || '';
+  const m = money.get();
+  const job = runJob({
+    kind: 'stageprep', target: name, system: prompts.STAGE_PREP_SYSTEM,
+    prompt: prompts.stagePrep({ stage: st, lang: hrq.LANGS[hrq.lang(vac)] || 'английском', vacancy: vac,
+      pain: [fit.pain, (fit.buckets?.must || []).join('; ')].filter(Boolean).join(' · '), cv: applyMsgCv(name).text,
+      cards: readText(path.join(CARDS_DIR, 'INDEX.md')), culture: cultureFor(name), prev: stageHistoryText(a, st),
+      test: st === 'technical' ? testTaskText(name) : '', topics,
+      money: st === 'final' ? [m.money?.target != null ? `цель ${m.money.target} ${m.money.currency || ''}` : '', m.anchor ? `якорь ${m.anchor}` : ''].filter(Boolean).join(', ') : '' }),
+    logFile: path.join(dir, `11-stage-${st}.log`),
+    onDone: async (j) => {
+      const prep = normStagePrep(oneJSON(j.finalText), cardIds);
+      if (prep.questions.length < 4) throw new Error(`вопросов слишком мало (${prep.questions.length})`);
+      fs.writeFileSync(stagePrepFile(name, st), `${JSON.stringify({ at: new Date().toISOString(), stage: st, ...prep }, null, 2)}\n`);
+    },
+  });
+  job.stage = st;
+  attach(name, 'stageprep', job);
+  res.json({ jobId: job.id });
+}));
 
 // ---------- отказы и разбор после собеседования (W6, docs/specs/28-funnel-rejections.md) ----------
 

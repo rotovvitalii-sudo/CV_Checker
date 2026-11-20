@@ -431,7 +431,7 @@ ${String(text).slice(0, 8000)}
 
 // ---------- W10 · мои вопросы к интервьюеру (docs/specs/38-interviewer-questions.md) ----------
 const HRQ_SYSTEM = 'Ты опытный карьерный коуч продуктовых лидеров. Готовишь кандидату вопросы, которые он задаст интервьюеру в конце звонка. Ничего не выдумываешь о компании сверх данных. Отвечай только одним JSON-объектом без пояснений и без markdown.';
-const HRQ_STAGE = { recruiter: 'первый звонок с рекрутером / HR', hiring_manager: 'интервью с нанимающим менеджером', final: 'финальный этап (руководство, команда)' };
+const HRQ_STAGE = { recruiter: 'первый звонок с рекрутером / HR', technical: 'техническое интервью / с нанимающим менеджером (кейс, метрики, защита тестового)', final: 'финальный этап (руководство, команда)' };
 
 function interviewerQuestions({ stage, langName, vacancy, fit, research, whyUs, cv, risky, earlier, keep, count, replace, prev, error }) {
   const r = research;
@@ -1019,5 +1019,42 @@ ${history.length ? `\nРазговор до этого:\n${history.map((m) => `$
 Вопрос кандидата: ${question}`;
 }
 
-module.exports = { lessonChat, LESSON_CHAT_SYSTEM, simFunnelScenario, SIM_FUNNEL_SYSTEM, simFunnelDebrief, SIM_FUNNEL_DEBRIEF_SYSTEM, simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
+// ---------- C26: подготовка к этапу собеседования ----------
+const STAGE_PREP_SYSTEM = 'Ты готовишь кандидата (продуктовый менеджер) к конкретному этапу собеседования. Только по фактам из его CV и базы кейсов; о кандидате ничего не выдумываешь. Отвечаешь одним JSON-объектом без пояснений и без markdown.';
+const STAGE_FOCUS = {
+  technical: 'техническое интервью / с нанимающим менеджером: продуктовый кейс, метрики и аналитика, эксперименты, защита тестового, работа с разработкой и приоритизация, глубина в домене',
+  final: 'финальное интервью (руководитель, основатель, команда): мотивация и «почему мы», ценности и культура, лидерство и конфликты, видение роли и первые 90 дней, ожидания по деньгам и условиям, вопросы к компании',
+};
+function stagePrep({ stage, lang, vacancy, pain, cv, cards, culture, prev, test, topics, money }) {
+  return `Этап: ${STAGE_FOCUS[stage]}.
+Язык собеседования: ${lang} — вопросы и вопросы к интервьюеру пиши на нём; пояснения кандидату — по-русски.
+
+Вакансия:
+"""
+${String(vacancy || '').slice(0, 7000)}
+"""
+${pain ? `Боль и минимум роли: ${pain}\n` : ''}
+CV, с которым кандидат подавался:
+"""
+${String(cv || '').slice(0, 6000)}
+"""
+
+Реестр карточек кейсов (id — первая колонка):
+${String(cards || '').slice(0, 5000)}
+${culture ? `\nКультура компании (разбор):\n${culture}\n` : ''}
+${prev.length ? `\nЧто было на прошлых этапах:\n${prev.join('\n\n')}\n` : '\nПрошлых этапов с записями нет.\n'}${test ? `\nТестовое задание:\n${test}\n` : ''}${topics ? `\nТемы для повторения (W8) и статус: ${topics}\n` : ''}${money ? `\nДеньги — только цель и якорь кандидата (не называй других сумм): ${money}\n` : ''}
+Собери подготовку:
+1. "focus" — что на этом этапе реально проверяют в этой компании, 1–2 фразы.
+2. "questions" — 8–15 вероятных вопросов по категориям (${stage === 'technical' ? 'case, metrics, experiments, test_defense, delivery, domain' : 'motivation, culture, leadership, vision_90, money, about_company'}):
+   "q" — вопрос, "why" — зачем спрашивают, "want" — что хотят услышать (2–3 пункта через «; »), "story" — id карточки, которая отвечает, или null,
+   "hint" — как построить ответ по-русски одной фразой (если story — с опорой на неё; если нечем подтвердить — честно: «нечем подтвердить — скажи, как бы действовал»).
+   Учитывай вопросы и впечатления прошлых этапов: то, где кандидат ответил слабо, обязательно вернётся — сформулируй это прямо.
+3. "weak" — слабые места с прошлых этапов: {"what": "что было", "fix": "как закрыть к этому этапу"} (пусто, если записей нет).
+4. "repeat" — 2–5 тем повторить перед встречей.
+5. "ask" — 3–5 вопросов к интервьюеру на этом этапе, на языке собеседования.
+6. "checklist" — 4–7 коротких пунктов подготовки (материалы, пример экрана, цифры под рукой, логистика).
+Верни JSON: {"focus": "…", "questions": [{"cat": "…", "q": "…", "why": "…", "want": "…", "story": null, "hint": "…"}], "weak": [], "repeat": [], "ask": [], "checklist": []}`;
+}
+
+module.exports = { stagePrep, STAGE_PREP_SYSTEM, lessonChat, LESSON_CHAT_SYSTEM, simFunnelScenario, SIM_FUNNEL_SYSTEM, simFunnelDebrief, SIM_FUNNEL_DEBRIEF_SYSTEM, simScenario, SIM_SCENARIO_SYSTEM, simOwn, SIM_OWN_SYSTEM, simDebrief, SIM_DEBRIEF_SYSTEM, reqMatch, REQ_MATCH_SYSTEM, reqSuggest, REQ_SUGGEST_SYSTEM, courseOutline, courseExam, EXAM_SYSTEM, topicReview, REVIEW_SYSTEM, topicsMatch, TOPICS_MATCH_SYSTEM, cvLayout, CV_LAYOUT_SYSTEM, testDebrief, testPlan, TEST_PLAN_SYSTEM, interviewerQuestions, HRQ_SYSTEM, answerFacts, ANSWER_FACTS_SYSTEM, whyUs, WHY_SYSTEM, companyResearch, companySay, COMPANY_SAY_SYSTEM, insightParse, INSIGHT_SYSTEM, interviewTopics, TOPICS_SYSTEM, topicLesson, topicVideo, topicTest, TEST_SYSTEM, topicTranslate, TRANSLATE_SYSTEM,
   applyMessage, APPLY_MSG_SYSTEM, fit, fitQuick, FIT_QUICK_SYSTEM, tailor, letter, letterGenerate, voiceProfile, outline, caseRound1, caseRound2, caseScan, formFill, verdict, outreach, interviewPrep, practice, keywords, masterImport, answers, answerRedo, edtechCompanies, sectorCompany };

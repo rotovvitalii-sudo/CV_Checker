@@ -5,14 +5,20 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const FILE = '10-interviewer-questions.json';
-const STAGES = ['recruiter', 'hiring_manager', 'final'];
+const STAGES = ['recruiter', 'technical', 'final']; // C26: hiring manager слит с техническим
 const STATUSES = ['todo', 'asked', 'skipped', 'moot']; // не задан / задан / не успел / отпал
 const CATEGORIES = ['role', 'team', 'success', 'company', 'process'];
 const BASIS = ['pain', 'news', 'value', 'gap', 'role', 'process'];
 const LANGS = { en: 'английском', pl: 'польском', de: 'немецком', uk: 'украинском', ru: 'русском' };
 
 const file = (dir) => path.join(dir, FILE);
-const read = (dir) => { try { return JSON.parse(fs.readFileSync(file(dir), 'utf8')); } catch { return { stages: {} }; } };
+function read(dir) {
+  let d;
+  try { d = JSON.parse(fs.readFileSync(file(dir), 'utf8')); } catch { return { stages: {} }; }
+  // C26: старый этап hiring_manager → technical
+  if (d.stages?.hiring_manager && !d.stages.technical) { d.stages.technical = d.stages.hiring_manager; delete d.stages.hiring_manager; }
+  return d;
+}
 function save(dir, data) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file(dir), `${JSON.stringify(data, null, 2)}\n`);

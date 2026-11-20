@@ -10,7 +10,7 @@ const STATE = path.join(DATA, 'answer-facts.json');
 const MIN_WORDS = 40;
 // Фактические вопросы — их место в «Стандартных ответах» (profile-answers.md), а не в базе кейсов
 const FACTUAL_Q = /salary|compensation|\bpay\b|\brate\b|notice|start date|when can you start|availab|visa|sponsor|work (permit|authori)|right to work|authori[sz]ed|relocat|linkedin|portfolio|github|website|phone|e-?mail|address|located|based in|where are you based|time ?zone|зарплат|вилк|срок выхода|виз[ауы]|релокац|переезд/i;
-const ORIGINS = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы', mycv: 'мои правки адаптированного CV', myletter: 'моё сопроводительное письмо', reqcase: 'кейс под требование вакансии' };
+const ORIGINS = { practice: 'тренажёр', submitted: 'мой ответ при подаче', form: 'форма на сайте', whyus: 'почему мы', mycv: 'мои правки адаптированного CV', myletter: 'моё сопроводительное письмо', reqcase: 'кейс под требование вакансии', stage: 'мой ответ на собеседовании' };
 
 const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length;
 const norm = (s) => String(s || '').toLowerCase().replace(/[«»"“”'’`]/g, '').replace(/\s+/g, ' ').trim();

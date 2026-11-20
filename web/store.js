@@ -61,6 +61,7 @@ function load() {
     state.apps = saved.apps || {};
     state.inbox = saved.inbox || {};
     knownMtime = fileMtime();
+    if (Object.values(state.apps).map(migrateStages).some(Boolean)) save();
   }
   // Задачи прошлого запуска сервера не переживают перезапуск
   for (const it of Object.values(state.inbox)) if (it.state === 'running') { it.state = 'error'; it.error = 'сервер перезапущен'; }
@@ -332,8 +333,21 @@ const masterExportName = (n, ext) => `CV_${personName()}_Master_v${String(n).pad
 
 // W6: этапы воронки по воркбуку — отклик → рекрутер → hiring manager → финал → оффер.
 // Явно отмеченный этап, иначе выводится из статусов: replied → рекрутер, interview → hiring manager.
-const FUNNEL = ['applied', 'recruiter', 'hiring_manager', 'final', 'offer'];
-const STATUS_STAGE = { sent: 'applied', replied: 'recruiter', interview: 'hiring_manager', offer: 'offer' };
+// C26: рекрутер → тестовое (необязательное) → техническое (вместе с hiring manager) → финал
+const FUNNEL = ['applied', 'recruiter', 'test', 'technical', 'final', 'offer'];
+const INTERVIEW_STAGES = ['recruiter', 'test', 'technical', 'final'];
+const STATUS_STAGE = { sent: 'applied', replied: 'recruiter', interview: 'technical', offer: 'offer' };
+// C26: «hiring manager» слит с «техническим» — старые записи переименовываются при загрузке
+function migrateStages(a) {
+  let changed = false;
+  const set = (o, k) => { if (o && o[k] === 'hiring_manager') { o[k] = 'technical'; changed = true; } };
+  set(a, 'stage');
+  for (const h of a.stageHistory || []) set(h, 'stage');
+  for (const d of a.debriefs || []) set(d, 'stage');
+  set(a.rejection, 'stage');
+  if (a.stages?.hiring_manager) { a.stages.technical = a.stages.technical || a.stages.hiring_manager; delete a.stages.hiring_manager; changed = true; }
+  return changed;
+}
 function funnelStage(a) {
   if (!a.sent && !a.stage) return null;
   if (a.stage) return a.stage;
@@ -407,7 +421,7 @@ function vacancyInfo(name) {
     foundOn: a.foundOn || null,
     submittedAnswers: a.submittedAnswers || [],
     verdict: verdictOf(name), verdictAgree: a.verdictAgree || '', offerChecklist: a.offerChecklist || {},
-    stage: funnelStage(a), stageExplicit: !!a.stage, stageHistory: a.stageHistory || [],
+    stage: funnelStage(a), stageExplicit: !!a.stage, stageHistory: a.stageHistory || [], stages: a.stages || {},
     rejection: a.rejection || null, debriefs: a.debriefs || [],
     // C10: страниц в последнем PDF письма — актуально, только если PDF собран из текущего письма
     letterPdf: a.letterPdf && lf && a.letterPdf.stamp === mtime(path.join(dir, lf)) ? a.letterPdf : null,
@@ -417,5 +431,5 @@ function vacancyInfo(name) {
 module.exports = {
   cvCheck, py,
   load, save, state, app, scan, vacancyInfo, cvMetrics, letterMetrics, safeName, outDir, pickFit,
-  exportNames, masterExportName, FUNNEL, STATUSES, CHANNELS, setStatus, noReplyDays, DAY, DATA, VACANCIES, OUTPUT, get inbox() { return state.inbox; },
+  exportNames, masterExportName, FUNNEL, INTERVIEW_STAGES, STATUSES, CHANNELS, setStatus, noReplyDays, DAY, DATA, VACANCIES, OUTPUT, get inbox() { return state.inbox; },
 };

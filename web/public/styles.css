@@ -280,7 +280,7 @@ a.btn { text-decoration: none; }
   display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 
 /* ---------- доска заявок (S2) ---------- */
-.board { display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.board { display: grid; grid-template-columns: repeat(7, minmax(180px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 4px; }
 .bcol { background: var(--seg); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 160px; transition: box-shadow .15s, background .15s; }
 .bcol h3 { margin: 2px 4px 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; display: flex; justify-content: space-between; color: var(--body); }
 .bcol-body { display: flex; flex-direction: column; gap: 8px; flex: 1; }
@@ -984,3 +984,8 @@ a.test-row:hover { border-color: var(--accent); }
 .lc-list .link-btn { text-align: left; }
 @media (min-width: 1100px) { body.lc-open { padding-right: 420px; } }
 @media (max-width: 640px) { .lc-panel { width: 100vw; border-left: 0; } }
+/* C26 · этапы собеседований */
+.stage-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.st-qa { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.stage-prep { margin-top: 12px; padding: 12px; background: var(--line-soft); border-radius: 10px; }
+.stage-prep h4 { font-size: 14px; }
